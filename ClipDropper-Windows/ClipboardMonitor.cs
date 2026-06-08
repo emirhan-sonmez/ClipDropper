@@ -14,6 +14,7 @@ internal sealed class ClipboardMonitor : NativeWindow, IDisposable
     private const int WM_CLIPBOARDUPDATE = 0x031D;
 
     public event Action<string>? TextCopied;
+    public event Action<Bitmap>? ImageCopied;
 
     public ClipboardMonitor()
     {
@@ -33,6 +34,14 @@ internal sealed class ClipboardMonitor : NativeWindow, IDisposable
                     var text = Clipboard.GetText();
                     if (!string.IsNullOrEmpty(text))
                         TextCopied?.Invoke(text);
+                }
+                else if (Clipboard.ContainsImage())
+                {
+                    var img = Clipboard.GetImage();
+                    if (img is Bitmap bmp)
+                        ImageCopied?.Invoke(bmp);
+                    else if (img != null)
+                        ImageCopied?.Invoke(new Bitmap(img));
                 }
             }
             catch (ExternalException) { /* clipboard locked by another process — skip */ }

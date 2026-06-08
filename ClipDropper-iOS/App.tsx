@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Pressable,
   StyleSheet,
   Text,
@@ -9,11 +10,13 @@ import {
 } from 'react-native';
 import { BleManager, Device, BleError } from 'react-native-ble-plx';
 import Clipboard from '@react-native-clipboard/clipboard';
+import * as FileSystem from 'expo-file-system';
+import * as DocumentPicker from 'expo-document-picker';
 
-// Must match GattProtocol.cs exactly
 const SERVICE_UUID   = '4fafc201-1fb5-459e-8fcc-c5c9c3319abc';
 const PC_TO_IOS_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
 const IOS_TO_PC_UUID = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
+const PC_HTTP_UUID   = 'f3641f28-cb91-4353-9a5b-2f3459b33f8a';
 
 function base64ToUtf8(b64: string): string {
   const binary = atob(b64);
@@ -30,6 +33,11 @@ function utf8ToBase64(str: string): string {
 }
 
 type Status = 'idle' | 'scanning' | 'connecting' | 'connected' | 'disconnected' | 'error';
+type LastItem =
+  | { kind: 'text'; content: string }
+  | { kind: 'image'; uri: string }
+  | { kind: 'file'; name: string }
+  | null;
 
 const manager = new BleManager({
   restoreStateIdentifier: 'ClipDropperBLERestoreIdentifier',
@@ -37,21 +45,22 @@ const manager = new BleManager({
 });
 
 export default function App() {
-  const [status, setStatus]       = useState<Status>('idle');
-  const [statusMsg, setStatusMsg] = useState('Tap Connect to find your PC');
-  const [lastReceived, setLast]   = useState<string | null>(null);
-  const deviceRef                 = useRef<Device | null>(null);
+  const [status, setStatus]     = useState<Status>('idle');
+  const [statusMsg, setMsg]     = useState('Tap Connect to find your PC');
+  const [lastItem, setLastItem] = useState<LastItem>(null);
+  const deviceRef = useRef<Device | null>(null);
+  const httpRef   = useRef<{ ip: string; port: string; token: string } | null>(null);
 
   useEffect(() => () => { manager.destroy(); }, []);
 
   function scan() {
     setStatus('scanning');
-    setStatusMsg('Scanning for ClipDropper PC…');
+    setMsg('Scanning for ClipDropper PC…');
 
     const timeout = setTimeout(() => {
       manager.stopDeviceScan();
       setStatus('idle');
-      setStatusMsg('No PC found. Is ClipDropper running on your PC?');
+      setMsg('No PC found. Is ClipDropper running on your PC?');
     }, 15000);
 
     manager.startDeviceScan([SERVICE_UUID], null, (error, device) => {
@@ -63,49 +72,102 @@ export default function App() {
   async function connect(device: Device) {
     try {
       setStatus('connecting');
-      setStatusMsg(`Connecting to ${device.name ?? 'ClipDropper PC'}…`);
+      setMsg(`Connecting to ${device.name ?? 'ClipDropper PC'}…`);
 
       const connected = await device.connect();
       await connected.discoverAllServicesAndCharacteristics();
       deviceRef.current = connected;
 
+      // Read HTTP endpoint so we can download images and receive files
+      try {
+        const httpChar = await connected.readCharacteristicForService(SERVICE_UUID, PC_HTTP_UUID);
+        if (httpChar.value) {
+          const parts = base64ToUtf8(httpChar.value).split(':');
+          httpRef.current = { ip: parts[0], port: parts[1], token: parts[2] };
+        }
+      } catch { /* older PC version without HTTP support */ }
+
       connected.onDisconnected(() => {
         deviceRef.current = null;
+        httpRef.current   = null;
         setStatus('disconnected');
-        setStatusMsg('Disconnected. Tap Connect to reconnect.');
+        setMsg('Disconnected. Tap Connect to reconnect.');
       });
 
-      // Receive clipboard from PC
-      connected.monitorCharacteristicForService(SERVICE_UUID, PC_TO_IOS_UUID, (err, char) => {
+      connected.monitorCharacteristicForService(SERVICE_UUID, PC_TO_IOS_UUID, async (err, char) => {
         if (err || !char?.value) return;
-        const text = base64ToUtf8(char.value);
-        Clipboard.setString(text);
-        setLast(text.length > 60 ? text.slice(0, 60) + '…' : text);
+        const msg = base64ToUtf8(char.value);
+
+        if (msg.startsWith('T:')) {
+          const text = msg.slice(2);
+          Clipboard.setString(text);
+          setLastItem({ kind: 'text', content: text.length > 60 ? text.slice(0, 60) + '…' : text });
+          return;
+        }
+
+        if (msg === 'I:' && httpRef.current) {
+          const { ip, port, token } = httpRef.current;
+          const dest = FileSystem.cacheDirectory + 'clipboard_img.png';
+          try {
+            await FileSystem.downloadAsync(
+              `http://${ip}:${port}/clip/image?token=${token}`, dest);
+            const b64 = await FileSystem.readAsStringAsync(dest,
+              { encoding: FileSystem.EncodingType.Base64 });
+            Clipboard.setImage(b64);
+            setLastItem({ kind: 'image', uri: dest + '?t=' + Date.now() });
+          } catch (e) {
+            console.warn('Image download failed', e);
+          }
+        }
       });
 
       setStatus('connected');
-      setStatusMsg(`Connected to ${device.name ?? 'ClipDropper PC'}`);
+      setMsg(`Connected to ${device.name ?? 'ClipDropper PC'}`);
     } catch (e) {
       handleError(e as BleError);
     }
   }
 
-  async function sendClipboard() {
+  async function sendClipboardText() {
     const device = deviceRef.current;
     if (!device) { Alert.alert('Not connected', 'Connect to your PC first.'); return; }
     try {
       const text = await Clipboard.getString();
       if (!text) { Alert.alert('Empty clipboard', 'Nothing to send.'); return; }
-      const b64 = utf8ToBase64(text);
-      await device.writeCharacteristicWithResponseForService(SERVICE_UUID, IOS_TO_PC_UUID, b64);
+      await device.writeCharacteristicWithResponseForService(
+        SERVICE_UUID, IOS_TO_PC_UUID, utf8ToBase64('T:' + text));
+    } catch (e) { handleError(e as BleError); }
+  }
+
+  async function pickAndSendFile() {
+    const http = httpRef.current;
+    if (!http) { Alert.alert('Not connected', 'Connect to your PC first.'); return; }
+
+    const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
+    if (result.canceled || !result.assets?.length) return;
+
+    const file = result.assets[0];
+    const url  = `http://${http.ip}:${http.port}/clip/upload?token=${http.token}&name=${encodeURIComponent(file.name)}`;
+
+    try {
+      const res = await FileSystem.uploadAsync(url, file.uri, {
+        httpMethod:  'POST',
+        uploadType:  FileSystem.FileSystemUploadType.BINARY_CONTENT,
+      });
+      if (res.status === 200) {
+        setLastItem({ kind: 'file', name: file.name });
+        Alert.alert('Sent!', `${file.name} saved to your PC's Downloads folder.`);
+      } else {
+        Alert.alert('Upload failed', `Server returned ${res.status}`);
+      }
     } catch (e) {
-      handleError(e as BleError);
+      Alert.alert('Upload failed', String(e));
     }
   }
 
   function handleError(e: BleError | Error) {
     setStatus('error');
-    setStatusMsg((e as BleError).message ?? String(e));
+    setMsg((e as BleError).message ?? String(e));
   }
 
   const connected = status === 'connected';
@@ -117,10 +179,24 @@ export default function App() {
       <View style={[styles.dot, { backgroundColor: connected ? '#34c759' : '#8e8e93' }]} />
       <Text style={styles.statusMsg}>{statusMsg}</Text>
 
-      {lastReceived && (
-        <View style={styles.received}>
-          <Text style={styles.receivedLabel}>Last received from PC:</Text>
-          <Text style={styles.receivedText}>{lastReceived}</Text>
+      {lastItem?.kind === 'text' && (
+        <View style={styles.card}>
+          <Text style={styles.cardLabel}>Last text from PC</Text>
+          <Text style={styles.cardText}>{lastItem.content}</Text>
+        </View>
+      )}
+
+      {lastItem?.kind === 'image' && (
+        <View style={styles.card}>
+          <Text style={styles.cardLabel}>Image received from PC</Text>
+          <Image source={{ uri: lastItem.uri }} style={styles.preview} resizeMode="contain" />
+        </View>
+      )}
+
+      {lastItem?.kind === 'file' && (
+        <View style={styles.card}>
+          <Text style={styles.cardLabel}>File sent to PC</Text>
+          <Text style={styles.cardText}>{lastItem.name}</Text>
         </View>
       )}
 
@@ -136,31 +212,43 @@ export default function App() {
         </Pressable>
 
         <Pressable
-          style={[styles.btn, styles.btnSend, !connected && styles.btnDisabled]}
-          onPress={sendClipboard}
+          style={[styles.btn, styles.btnGreen, !connected && styles.btnDisabled]}
+          onPress={sendClipboardText}
           disabled={!connected}
         >
-          <Text style={styles.btnText}>Send Clipboard → PC</Text>
+          <Text style={styles.btnText}>Send Clipboard Text → PC</Text>
+        </Pressable>
+
+        <Pressable
+          style={[styles.btn, styles.btnOrange, !connected && styles.btnDisabled]}
+          onPress={pickAndSendFile}
+          disabled={!connected}
+        >
+          <Text style={styles.btnText}>Pick File → PC</Text>
         </Pressable>
       </View>
 
-      <Text style={styles.hint}>Keep this app open to auto-receive clipboard from PC.</Text>
+      <Text style={styles.hint}>
+        Copy on PC to auto-receive. Use buttons to send to PC.
+      </Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root:          { flex: 1, backgroundColor: '#f2f2f7', alignItems: 'center', justifyContent: 'center', padding: 24 },
-  title:         { fontSize: 28, fontWeight: '700', marginBottom: 16, color: '#1c1c1e' },
-  dot:           { width: 20, height: 20, borderRadius: 10, marginBottom: 12 },
-  statusMsg:     { fontSize: 15, color: '#3c3c43', textAlign: 'center', marginBottom: 24 },
-  received:      { backgroundColor: '#fff', borderRadius: 12, padding: 14, width: '100%', marginBottom: 24 },
-  receivedLabel: { fontSize: 12, color: '#8e8e93', marginBottom: 4 },
-  receivedText:  { fontSize: 15, color: '#1c1c1e' },
-  buttons:       { width: '100%', gap: 12, marginBottom: 24 },
-  btn:           { backgroundColor: '#007aff', borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
-  btnSend:       { backgroundColor: '#34c759' },
-  btnDisabled:   { opacity: 0.4 },
-  btnText:       { color: '#fff', fontSize: 16, fontWeight: '600' },
-  hint:          { fontSize: 13, color: '#8e8e93', textAlign: 'center' },
+  root:      { flex: 1, backgroundColor: '#f2f2f7', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  title:     { fontSize: 28, fontWeight: '700', marginBottom: 16, color: '#1c1c1e' },
+  dot:       { width: 20, height: 20, borderRadius: 10, marginBottom: 12 },
+  statusMsg: { fontSize: 15, color: '#3c3c43', textAlign: 'center', marginBottom: 24 },
+  card:      { backgroundColor: '#fff', borderRadius: 12, padding: 14, width: '100%', marginBottom: 20 },
+  cardLabel: { fontSize: 12, color: '#8e8e93', marginBottom: 6 },
+  cardText:  { fontSize: 15, color: '#1c1c1e' },
+  preview:   { width: '100%', height: 160, borderRadius: 8, backgroundColor: '#f0f0f0' },
+  buttons:   { width: '100%', gap: 12, marginBottom: 24 },
+  btn:       { backgroundColor: '#007aff', borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
+  btnGreen:  { backgroundColor: '#34c759' },
+  btnOrange: { backgroundColor: '#ff9500' },
+  btnDisabled: { opacity: 0.4 },
+  btnText:   { color: '#fff', fontSize: 16, fontWeight: '600' },
+  hint:      { fontSize: 13, color: '#8e8e93', textAlign: 'center' },
 });

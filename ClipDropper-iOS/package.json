@@ -8,7 +8,9 @@
     "expo-status-bar": "~56.0.4",
     "react": "19.2.3",
     "react-native": "0.85.3",
-    "react-native-ble-plx": "^3.5.1"
+    "react-native-ble-plx": "^3.5.1",
+    "expo-document-picker": "*",
+    "expo-file-system": "*"
   },
   "devDependencies": {
     "@types/react": "~19.2.2",

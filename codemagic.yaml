@@ -12,7 +12,7 @@ workflows:
         script: |
           set -e
           cd ClipDropper-iOS
-          npm ci
+          npm install
       - name: Generate native iOS project
         script: |
           set -e
