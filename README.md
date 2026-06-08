@@ -15,6 +15,11 @@ No cloud. No account. No cables. Just copy on one device and paste on the other.
 
 [Windows _(coming soon)_](#windows) · [Install on iPhone](#ios) · [Build from Source](#build-from-source) · [How it Works](#how-it-works)
 
+---
+
+**Language / Dil / 语言 / 언어 / Язык / Lingua:**
+[English](README.md) · [Español](README.es.md) · [Italiano](README.it.md) · [中文](README.zh.md) · [한국어](README.ko.md) · [Русский](README.ru.md) · [Türkçe](README.tr.md)
+
 </div>
 
 ---
