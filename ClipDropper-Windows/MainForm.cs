@@ -1,4 +1,5 @@
 using System.Drawing.Imaging;
+using System.IO.Compression;
 using System.IO.Pipes;
 
 namespace ClipDropper;
@@ -11,6 +12,7 @@ internal sealed class MainForm : Form
     private readonly ToolStripMenuItem  _autoStartItem;
     private readonly ToolStripMenuItem  _notificationsItem;
     private readonly ToolStripMenuItem  _recentMenu;
+    private readonly ToolStripMenuItem  _openLogItem;
 
     // ── services ──────────────────────────────────────────────────────────
     private ClipboardMonitor? _clipboardMonitor;
@@ -36,9 +38,17 @@ internal sealed class MainForm : Form
         _notificationsItem = new ToolStripMenuItem("Show notifications")
                              { Checked = SettingsStore.Notifications, CheckOnClick = true };
         _recentMenu        = new ToolStripMenuItem("Recent");
+        _openLogItem       = new ToolStripMenuItem("Open transfer log");
 
         _autoStartItem.Click     += (_, _) => SettingsStore.AutoStart     = _autoStartItem.Checked;
         _notificationsItem.Click += (_, _) => SettingsStore.Notifications = _notificationsItem.Checked;
+        _openLogItem.Click       += (_, _) =>
+        {
+            if (TransferLog.Exists)
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(TransferLog.FilePath) { UseShellExecute = true });
+            else
+                System.Windows.Forms.MessageBox.Show("No transfers logged yet.", "ClipDropper");
+        };
 
         RefreshHistoryMenu();
 
@@ -49,6 +59,7 @@ internal sealed class MainForm : Form
         menu.Items.Add(_notificationsItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(_recentMenu);
+        menu.Items.Add(_openLogItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Exit", null, (_, _) => Application.Exit());
 
@@ -116,6 +127,11 @@ internal sealed class MainForm : Form
                         var path = line;
                         Invoke(() => _ = SendLocalFileToiOSAsync(path));
                     }
+                    else if (Directory.Exists(line) && IsHandleCreated)
+                    {
+                        var path = line;
+                        Invoke(() => _ = SendLocalFolderToiOSAsync(path));
+                    }
                 }
             }
             catch (OperationCanceledException) { break; }
@@ -136,6 +152,32 @@ internal sealed class MainForm : Form
         await _ble.NotifyFileAvailableAsync(filename);
         Notify("ClipDropper", $"Sending {filename}…");
         AddHistory($"→ {filename}", null);
+        TransferLog.Write("→", filename);
+    }
+
+    // F2: zip a folder and send it as a single file
+    private async Task SendLocalFolderToiOSAsync(string folderPath)
+    {
+        if (_http is null || _ble is null)
+        {
+            Notify("ClipDropper", "Not connected to iPhone");
+            return;
+        }
+        var folderName = Path.GetFileName(folderPath);
+        var zipName    = folderName + ".zip";
+        Notify("ClipDropper", $"Zipping {folderName}…");
+        using var ms = new MemoryStream();
+        await Task.Run(() =>
+        {
+            using var archive = new ZipArchive(ms, ZipArchiveMode.Create, leaveOpen: true);
+            foreach (var file in Directory.GetFiles(folderPath, "*", SearchOption.AllDirectories))
+                archive.CreateEntryFromFile(file, Path.GetRelativePath(folderPath, file));
+        });
+        _http.SetPendingFile(ms.ToArray(), zipName);
+        await _ble.NotifyFileAvailableAsync(zipName);
+        Notify("ClipDropper", $"Sending {zipName}…");
+        AddHistory($"→ {zipName}", null);
+        TransferLog.Write("→", zipName);
     }
 
     // ── clipboard events ──────────────────────────────────────────────────
@@ -164,6 +206,7 @@ internal sealed class MainForm : Form
             var preview = text.Length > 30 ? text[..30] + "…" : text;
             Notify("ClipDropper", $"✓ Text: {preview}");
             AddHistory($"\"{preview}\"", text);
+            TransferLog.Write("←", $"text: {preview}");
         });
     }
 
@@ -179,6 +222,7 @@ internal sealed class MainForm : Form
             {
                 Notify("ClipDropper", $"✓ {filename} saved");
                 AddHistory($"↓ {filename}", null);
+                TransferLog.Write("←", filename);
             });
     }
 

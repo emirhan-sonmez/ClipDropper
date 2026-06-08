@@ -105,14 +105,18 @@ internal sealed class BlePeripheral : IDisposable
 
     public async Task NotifyImageAvailableAsync()
     {
+        var bytes = System.Text.Encoding.UTF8.GetBytes(GattProtocol.PfxImage);
+        _lastSent = bytes; // store so iOS can read on foreground even if BLE notify was missed
         if (_pcToIos is null || _pcToIos.SubscribedClients.Count == 0) return;
-        await NotifyAsync(System.Text.Encoding.UTF8.GetBytes(GattProtocol.PfxImage));
+        await NotifyAsync(bytes);
     }
 
     public async Task NotifyFileAvailableAsync(string filename)
     {
+        var bytes = System.Text.Encoding.UTF8.GetBytes(GattProtocol.PfxFile + filename);
+        _lastSent = bytes;
         if (_pcToIos is null || _pcToIos.SubscribedClients.Count == 0) return;
-        await NotifyAsync(System.Text.Encoding.UTF8.GetBytes(GattProtocol.PfxFile + filename));
+        await NotifyAsync(bytes);
     }
 
     private async Task NotifyAsync(byte[] bytes)
