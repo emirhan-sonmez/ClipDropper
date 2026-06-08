@@ -63,7 +63,7 @@ export default function App() {
   async function connect(device: Device) {
     try {
       setStatus('connecting');
-      setStatusMsg(`Connecting to ${device.name ?? device.id}…`);
+      setStatusMsg(`Connecting to ${device.name ?? 'ClipDropper PC'}…`);
 
       const connected = await device.connect();
       await connected.discoverAllServicesAndCharacteristics();
@@ -84,7 +84,7 @@ export default function App() {
       });
 
       setStatus('connected');
-      setStatusMsg(`Connected to ${device.name ?? device.id}`);
+      setStatusMsg(`Connected to ${device.name ?? 'ClipDropper PC'}`);
     } catch (e) {
       handleError(e as BleError);
     }
