@@ -12,6 +12,7 @@ import { BleManager, Device, BleError } from 'react-native-ble-plx';
 import Clipboard from '@react-native-clipboard/clipboard';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
 
 const SERVICE_UUID   = '4fafc201-1fb5-459e-8fcc-c5c9c3319abc';
 const PC_TO_IOS_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
@@ -159,8 +160,6 @@ export default function App() {
     if (result.canceled || !result.assets?.length) return;
 
     const file = result.assets[0];
-    const url  = `http://${http.ip}:${http.port}/clip/upload?token=${http.token}&name=${encodeURIComponent(file.name)}`;
-
     try {
       const b64 = await FileSystem.readAsStringAsync(file.uri, {
         encoding: FileSystem.EncodingType.Base64,
@@ -168,20 +167,73 @@ export default function App() {
       const binary = atob(b64);
       const bytes = new Uint8Array(binary.length);
       for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      await uploadBytes(bytes, file.name);
+    } catch (e) {
+      Alert.alert('Upload failed', String(e));
+    }
+  }
 
+  async function uploadBytes(bytes: Uint8Array, filename: string): Promise<boolean> {
+    const http = httpRef.current;
+    if (!http) { Alert.alert('Not connected', 'Connect to your PC first.'); return false; }
+    const url = `http://${http.ip}:${http.port}/clip/upload?token=${http.token}&name=${encodeURIComponent(filename)}`;
+    try {
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/octet-stream' },
         body: bytes.buffer,
       });
       if (res.ok) {
-        setLastItem({ kind: 'file', name: file.name });
-        Alert.alert('Sent!', `${file.name} saved to your PC's Downloads folder.`);
-      } else {
-        Alert.alert('Upload failed', `Server returned ${res.status}`);
+        setLastItem({ kind: 'file', name: filename });
+        Alert.alert('Sent!', `${filename} saved to your PC's Downloads folder.`);
+        return true;
       }
+      Alert.alert('Upload failed', `Server returned ${res.status}`);
     } catch (e) {
       Alert.alert('Upload failed', String(e));
+    }
+    return false;
+  }
+
+  async function sendClipboardImage() {
+    if (!httpRef.current) { Alert.alert('Not connected', 'Connect to your PC first.'); return; }
+    try {
+      const hasImg = await Clipboard.hasImage();
+      if (!hasImg) { Alert.alert('No image', 'No image in clipboard. Copy an image first.'); return; }
+      const b64 = await Clipboard.getImage();
+      if (!b64) { Alert.alert('No image', 'Could not read clipboard image.'); return; }
+      const binary = atob(b64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      await uploadBytes(bytes, 'clipboard_image.png');
+    } catch (e) {
+      Alert.alert('Failed', String(e));
+    }
+  }
+
+  async function pickAndSendPhoto() {
+    if (!httpRef.current) { Alert.alert('Not connected', 'Connect to your PC first.'); return; }
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('Permission denied', 'Allow photo library access in Settings to send photos.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 1,
+    });
+    if (result.canceled || !result.assets?.length) return;
+    const asset = result.assets[0];
+    try {
+      const b64 = await FileSystem.readAsStringAsync(asset.uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      const binary = atob(b64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      await uploadBytes(bytes, asset.fileName ?? 'photo.jpg');
+    } catch (e) {
+      Alert.alert('Failed', String(e));
     }
   }
 
@@ -246,6 +298,22 @@ export default function App() {
         >
           <Text style={styles.btnText}>Pick File → PC</Text>
         </Pressable>
+
+        <Pressable
+          style={[styles.btn, styles.btnPurple, !connected && styles.btnDisabled]}
+          onPress={sendClipboardImage}
+          disabled={!connected}
+        >
+          <Text style={styles.btnText}>Send Clipboard Image → PC</Text>
+        </Pressable>
+
+        <Pressable
+          style={[styles.btn, styles.btnTeal, !connected && styles.btnDisabled]}
+          onPress={pickAndSendPhoto}
+          disabled={!connected}
+        >
+          <Text style={styles.btnText}>Pick Photo → PC</Text>
+        </Pressable>
       </View>
 
       <Text style={styles.hint}>
@@ -267,7 +335,9 @@ const styles = StyleSheet.create({
   buttons:   { width: '100%', gap: 12, marginBottom: 24 },
   btn:       { backgroundColor: '#007aff', borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
   btnGreen:  { backgroundColor: '#34c759' },
-  btnOrange: { backgroundColor: '#ff9500' },
+  btnOrange:  { backgroundColor: '#ff9500' },
+  btnPurple:  { backgroundColor: '#af52de' },
+  btnTeal:    { backgroundColor: '#32ade6' },
   btnDisabled: { opacity: 0.4 },
   btnText:   { color: '#fff', fontSize: 16, fontWeight: '600' },
   hint:      { fontSize: 13, color: '#8e8e93', textAlign: 'center' },

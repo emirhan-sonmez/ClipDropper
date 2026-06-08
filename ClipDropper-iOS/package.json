@@ -10,7 +10,8 @@
     "react-native": "0.85.3",
     "react-native-ble-plx": "^3.5.1",
     "expo-document-picker": "*",
-    "expo-file-system": "*"
+    "expo-file-system": "*",
+    "expo-image-picker": "*"
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
