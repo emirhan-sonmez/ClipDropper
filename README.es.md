@@ -17,8 +17,7 @@ Sin nube. Sin cuenta. Sin cables. Solo copia en un dispositivo y pega en el otro
 
 ---
 
-**Idioma / Language / 语言 / 언어 / Язык / Lingua:**
-[English](README.md) · [Español](README.es.md) · [Italiano](README.it.md) · [中文](README.zh.md) · [한국어](README.ko.md) · [Русский](README.ru.md) · [Türkçe](README.tr.md)
+[🇬🇧 English](README.md) · [🇪🇸 Español](README.es.md) · [🇮🇹 Italiano](README.it.md) · [🇨🇳 中文](README.zh.md) · [🇰🇷 한국어](README.ko.md) · [🇷🇺 Русский](README.ru.md) · [🇹🇷 Türkçe](README.tr.md)
 
 </div>
 

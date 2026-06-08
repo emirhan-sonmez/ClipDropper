@@ -17,8 +17,7 @@ No cloud. No account. No cables. Just copy on one device and paste on the other.
 
 ---
 
-**Language / Dil / 语言 / 언어 / Язык / Lingua:**
-[English](README.md) · [Español](README.es.md) · [Italiano](README.it.md) · [中文](README.zh.md) · [한국어](README.ko.md) · [Русский](README.ru.md) · [Türkçe](README.tr.md)
+[🇬🇧 English](README.md) · [🇪🇸 Español](README.es.md) · [🇮🇹 Italiano](README.it.md) · [🇨🇳 中文](README.zh.md) · [🇰🇷 한국어](README.ko.md) · [🇷🇺 Русский](README.ru.md) · [🇹🇷 Türkçe](README.tr.md)
 
 </div>
 
@@ -78,12 +77,21 @@ ClipDropper uses **Bluetooth Low Energy (BLE)** for discovery and small payloads
 
 ### Windows
 
-> **Coming soon** — the Windows installer will be available on the [Releases](https://github.com/emirhan-sonmez/ClipDropper/releases) page. In the meantime, you can [build from source](#build-from-source).
+> **Coming soon** — the Windows installer will be available on the [Releases](https://github.com/emirhan-sonmez/ClipDropper/releases) page.
+
+**Alternative: run without the installer**
+
+The only dependency is the free [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) (~200 MB, one-time install).
+
+1. Install the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
+2. Download or clone this repository
+3. Double-click `ClipDropper-Windows\run.bat` — it builds and launches automatically
 
 <!--
-1. Go to the Releases page and download `ClipDropper-Setup.exe`
-2. Run the installer — it will detect and offer to install .NET 8 if missing
-3. Launch ClipDropper from the Start Menu or desktop shortcut
+Installer method (once released):
+1. Download `ClipDropper-Setup.exe` from the Releases page
+2. Run it — .NET 8 Desktop Runtime is detected and offered automatically
+3. Launch from the Start Menu or desktop shortcut
 -->
 
 ### iOS

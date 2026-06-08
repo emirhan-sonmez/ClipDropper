@@ -1,10 +1,10 @@
 @echo off
-echo Building ClipDropper...
-dotnet build "%~dp0ClipDropper.csproj" -c Release --nologo -v quiet
-if %errorlevel% neq 0 (
-    echo Build failed. Press any key to exit.
-    pause >nul
+where dotnet >/dev/null 2>&1
+if %%ERRORLEVEL%% NEQ 0 (
+    echo .NET 8 SDK is not installed.
+    echo Download it free from: https://dotnet.microsoft.com/download/dotnet/8.0
+    start https://dotnet.microsoft.com/download/dotnet/8.0
+    pause
     exit /b 1
 )
-echo Starting ClipDropper...
-start "" "%~dp0bin\Release\net8.0-windows10.0.19041.0\ClipDropper.exe"
+dotnet run --project "%%~dp0ClipDropper.csproj"
