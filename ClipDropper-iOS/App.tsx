@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { BleManager, Device, BleError } from 'react-native-ble-plx';
 import Clipboard from '@react-native-clipboard/clipboard';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as DocumentPicker from 'expo-document-picker';
 
 const SERVICE_UUID   = '4fafc201-1fb5-459e-8fcc-c5c9c3319abc';
