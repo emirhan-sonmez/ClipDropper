@@ -1,0 +1,17 @@
+C:\Users\emirh\Desktop\TheFilest\GitHubProjects\ClipDropper\ClipDropper-Windows\bin\Debug\net8.0-windows10.0.19041.0\ClipDropper.exe
+C:\Users\emirh\Desktop\TheFilest\GitHubProjects\ClipDropper\ClipDropper-Windows\bin\Debug\net8.0-windows10.0.19041.0\ClipDropper.deps.json
+C:\Users\emirh\Desktop\TheFilest\GitHubProjects\ClipDropper\ClipDropper-Windows\bin\Debug\net8.0-windows10.0.19041.0\ClipDropper.runtimeconfig.json
+C:\Users\emirh\Desktop\TheFilest\GitHubProjects\ClipDropper\ClipDropper-Windows\bin\Debug\net8.0-windows10.0.19041.0\ClipDropper.dll
+C:\Users\emirh\Desktop\TheFilest\GitHubProjects\ClipDropper\ClipDropper-Windows\bin\Debug\net8.0-windows10.0.19041.0\ClipDropper.pdb
+C:\Users\emirh\Desktop\TheFilest\GitHubProjects\ClipDropper\ClipDropper-Windows\bin\Debug\net8.0-windows10.0.19041.0\Microsoft.Windows.SDK.NET.dll
+C:\Users\emirh\Desktop\TheFilest\GitHubProjects\ClipDropper\ClipDropper-Windows\bin\Debug\net8.0-windows10.0.19041.0\WinRT.Runtime.dll
+C:\Users\emirh\Desktop\TheFilest\GitHubProjects\ClipDropper\ClipDropper-Windows\obj\Debug\net8.0-windows10.0.19041.0\ClipDropper.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\emirh\Desktop\TheFilest\GitHubProjects\ClipDropper\ClipDropper-Windows\obj\Debug\net8.0-windows10.0.19041.0\ClipDropper.AssemblyInfoInputs.cache
+C:\Users\emirh\Desktop\TheFilest\GitHubProjects\ClipDropper\ClipDropper-Windows\obj\Debug\net8.0-windows10.0.19041.0\ClipDropper.AssemblyInfo.cs
+C:\Users\emirh\Desktop\TheFilest\GitHubProjects\ClipDropper\ClipDropper-Windows\obj\Debug\net8.0-windows10.0.19041.0\ClipDropper.csproj.CoreCompileInputs.cache
+C:\Users\emirh\Desktop\TheFilest\GitHubProjects\ClipDropper\ClipDropper-Windows\obj\Debug\net8.0-windows10.0.19041.0\ClipDrop.03E23905.Up2Date
+C:\Users\emirh\Desktop\TheFilest\GitHubProjects\ClipDropper\ClipDropper-Windows\obj\Debug\net8.0-windows10.0.19041.0\ClipDropper.dll
+C:\Users\emirh\Desktop\TheFilest\GitHubProjects\ClipDropper\ClipDropper-Windows\obj\Debug\net8.0-windows10.0.19041.0\refint\ClipDropper.dll
+C:\Users\emirh\Desktop\TheFilest\GitHubProjects\ClipDropper\ClipDropper-Windows\obj\Debug\net8.0-windows10.0.19041.0\ClipDropper.pdb
+C:\Users\emirh\Desktop\TheFilest\GitHubProjects\ClipDropper\ClipDropper-Windows\obj\Debug\net8.0-windows10.0.19041.0\ClipDropper.genruntimeconfig.cache
+C:\Users\emirh\Desktop\TheFilest\GitHubProjects\ClipDropper\ClipDropper-Windows\obj\Debug\net8.0-windows10.0.19041.0\ref\ClipDropper.dll
