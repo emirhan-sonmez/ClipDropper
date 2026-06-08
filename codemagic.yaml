@@ -11,19 +11,19 @@ workflows:
       - name: Install dependencies
         script: |
           set -e
-          cd "$CM_BUILD_DIR/ClipDropper-iOS"
+          cd ClipDropper-iOS
           npm ci
       - name: Generate native iOS project
         script: |
           set -e
-          cd "$CM_BUILD_DIR/ClipDropper-iOS"
+          cd ClipDropper-iOS
           npx expo prebuild --platform ios --no-install
           echo "=== ios/ contents ==="
           ls -la ios/
       - name: Install CocoaPods
         script: |
           set -e
-          cd "$CM_BUILD_DIR/ClipDropper-iOS/ios"
+          cd ClipDropper-iOS/ios
           pod install --repo-update
           echo "=== Workspace check ==="
           ls -la .
@@ -31,7 +31,7 @@ workflows:
         script: |
           set -e
           xcodebuild \
-            -workspace "$CM_BUILD_DIR/ClipDropper-iOS/ios/ClipDropper.xcworkspace" \
+            -workspace ClipDropper-iOS/ios/ClipDropper.xcworkspace \
             -scheme ClipDropper \
             -sdk iphoneos \
             -configuration Release \
@@ -40,13 +40,14 @@ workflows:
             CODE_SIGNING_ALLOWED=NO \
             ONLY_ACTIVE_ARCH=NO \
             build \
-            -derivedDataPath "$CM_BUILD_DIR/derived"
+            -derivedDataPath derived
       - name: Package into IPA
         script: |
           set -e
-          APP=$(find "$CM_BUILD_DIR/derived" -name "*.app" -path "*/Release-iphoneos/*" | head -1)
-          mkdir -p "$CM_BUILD_DIR/Payload"
-          cp -r "$APP" "$CM_BUILD_DIR/Payload/"
-          cd "$CM_BUILD_DIR" && zip -r ClipDropper.ipa Payload/
+          APP=$(find derived -name "*.app" -path "*/Release-iphoneos/*" | head -1)
+          echo "Found app: $APP"
+          mkdir -p Payload
+          cp -r "$APP" Payload/
+          zip -r ClipDropper.ipa Payload/
     artifacts:
-      - $CM_BUILD_DIR/ClipDropper.ipa
+      - ClipDropper.ipa
