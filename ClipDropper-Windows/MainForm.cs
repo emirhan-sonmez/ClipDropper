@@ -38,6 +38,9 @@ internal sealed class MainForm : Form
     {
         base.OnLoad(e);
 
+        StartupHelper.EnsureAutoStart();
+        StartupHelper.EnsureFirewallRule();
+
         _http = new HttpServer();
         _http.FileReceived += OnFileReceived;
 

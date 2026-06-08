@@ -49,10 +49,20 @@ export default function App() {
   const [status, setStatus]     = useState<Status>('idle');
   const [statusMsg, setMsg]     = useState('Tap Connect to find your PC');
   const [lastItem, setLastItem] = useState<LastItem>(null);
-  const deviceRef = useRef<Device | null>(null);
-  const httpRef   = useRef<{ ip: string; port: string; token: string } | null>(null);
+  const deviceRef             = useRef<Device | null>(null);
+  const httpRef               = useRef<{ ip: string; port: string; token: string } | null>(null);
+  const intentionalDisconnect = useRef(false);
 
-  useEffect(() => () => { manager.destroy(); }, []);
+  // A2: auto-scan as soon as BLE is powered on
+  useEffect(() => {
+    const sub = manager.onStateChange((state) => {
+      if (state === 'PoweredOn') {
+        sub.remove();
+        scan();
+      }
+    }, true);
+    return () => { sub.remove(); manager.destroy(); };
+  }, []);
 
   function scan() {
     setStatus('scanning');
@@ -91,8 +101,14 @@ export default function App() {
       connected.onDisconnected(() => {
         deviceRef.current = null;
         httpRef.current   = null;
-        setStatus('disconnected');
-        setMsg('Disconnected. Tap Connect to reconnect.');
+        if (intentionalDisconnect.current) {
+          intentionalDisconnect.current = false;
+          setStatus('idle');
+          setMsg('Disconnected. Tap Connect to reconnect.');
+        } else {
+          setMsg('Lost connection. Reconnecting…');
+          setTimeout(() => scan(), 2000);
+        }
       });
 
       connected.monitorCharacteristicForService(SERVICE_UUID, PC_TO_IOS_UUID, async (err, char) => {
@@ -273,7 +289,7 @@ export default function App() {
       <View style={styles.buttons}>
         <Pressable
           style={[styles.btn, busy && styles.btnDisabled]}
-          onPress={connected ? () => deviceRef.current?.cancelConnection() : scan}
+          onPress={connected ? () => { intentionalDisconnect.current = true; deviceRef.current?.cancelConnection(); } : scan}
           disabled={busy}
         >
           {busy
