@@ -15,9 +15,26 @@ const SERVICE_UUID   = '4fafc201-1fb5-459e-8fcc-c5c9c3319abc';
 const PC_TO_IOS_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
 const IOS_TO_PC_UUID = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
 
+function base64ToUtf8(b64: string): string {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new TextDecoder().decode(bytes);
+}
+
+function utf8ToBase64(str: string): string {
+  const bytes = new TextEncoder().encode(str);
+  let binary = '';
+  bytes.forEach(b => { binary += String.fromCharCode(b); });
+  return btoa(binary);
+}
+
 type Status = 'idle' | 'scanning' | 'connecting' | 'connected' | 'disconnected' | 'error';
 
-const manager = new BleManager();
+const manager = new BleManager({
+  restoreStateIdentifier: 'ClipDropperBLERestoreIdentifier',
+  restoreStateFunction: () => {},
+});
 
 export default function App() {
   const [status, setStatus]       = useState<Status>('idle');
@@ -61,7 +78,7 @@ export default function App() {
       // Receive clipboard from PC
       connected.monitorCharacteristicForService(SERVICE_UUID, PC_TO_IOS_UUID, (err, char) => {
         if (err || !char?.value) return;
-        const text = Buffer.from(char.value, 'base64').toString('utf8');
+        const text = base64ToUtf8(char.value);
         Clipboard.setString(text);
         setLast(text.length > 60 ? text.slice(0, 60) + '…' : text);
       });
@@ -79,7 +96,7 @@ export default function App() {
     try {
       const text = await Clipboard.getString();
       if (!text) { Alert.alert('Empty clipboard', 'Nothing to send.'); return; }
-      const b64 = Buffer.from(text, 'utf8').toString('base64');
+      const b64 = utf8ToBase64(text);
       await device.writeCharacteristicWithResponseForService(SERVICE_UUID, IOS_TO_PC_UUID, b64);
     } catch (e) {
       handleError(e as BleError);
