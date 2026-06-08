@@ -4,16 +4,18 @@ workflows:
     max_build_duration: 60
     instance_type: mac_mini_m2
     environment:
-      node: v22.22.2
+      node: latest
       xcode: latest
       cocoapods: default
     scripts:
       - name: Install dependencies
         script: npm ci
       - name: Generate native iOS project
-        script: npx expo prebuild --platform ios --clean
+        script: |
+          npx expo prebuild --platform ios --no-install
+          echo "=== ios/ contents ===" && ls ios/ || (echo "ERROR: ios/ not created" && exit 1)
       - name: Install CocoaPods
-        script: cd ios && pod install
+        script: cd ios && pod install --repo-update
       - name: Build unsigned
         script: |
           xcodebuild \
