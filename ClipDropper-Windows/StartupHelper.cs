@@ -66,6 +66,41 @@ internal static class StartupHelper
         catch { }
     }
 
+    // HKCU shell keys — no elevation required
+    private const string ShellFile   = @"Software\Classes\*\shell\SendViaClipDropper";
+    private const string ShellFolder = @"Software\Classes\Directory\shell\SendViaClipDropper";
+
+    public static void EnsureContextMenu(bool enable)
+    {
+        var exePath = RealExePath();
+        if (exePath is null) return;
+
+        if (enable)
+        {
+            SetShellKey(ShellFile,   exePath);
+            SetShellKey(ShellFolder, exePath);
+        }
+        else
+        {
+            try { Registry.CurrentUser.DeleteSubKeyTree(ShellFile,   throwOnMissingSubKey: false); } catch { }
+            try { Registry.CurrentUser.DeleteSubKeyTree(ShellFolder, throwOnMissingSubKey: false); } catch { }
+        }
+    }
+
+    private static void SetShellKey(string shellKey, string exePath)
+    {
+        try
+        {
+            using var key = Registry.CurrentUser.CreateSubKey(shellKey);
+            if (key is null) return;
+            key.SetValue(null,   "Send via ClipDropper");
+            key.SetValue("Icon", exePath);
+            using var cmd = key.CreateSubKey("command");
+            cmd?.SetValue(null, $"\"{exePath}\" \"%1\"");
+        }
+        catch { }
+    }
+
     public static void EnsureFirewallRule()
     {
         var exePath = RealExePath();

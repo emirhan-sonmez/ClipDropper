@@ -66,10 +66,13 @@ type LastItem  =
   | { kind: 'image'; uri: string }
   | { kind: 'file';  name: string }
   | null;
-type HistItem  =
-  | { id: number; kind: 'text';  label: string; value: string }
-  | { id: number; kind: 'image'; label: string; uri: string }
-  | { id: number; kind: 'file';  label: string };
+
+// Separate data type so pushItem's parameter is correctly typed as a discriminated union
+type HistItemData =
+  | { kind: 'text';  label: string; value: string }
+  | { kind: 'image'; label: string; uri: string }
+  | { kind: 'file';  label: string; localPath?: string };
+type HistItem = HistItemData & { id: number };
 
 const manager = new BleManager({
   restoreStateIdentifier: 'ClipDropperBLERestoreIdentifier',
@@ -77,10 +80,12 @@ const manager = new BleManager({
 });
 let _hid = 0;
 
-// Each row owns its own flash animation so multiple rows can blink independently
+// Per-row animated component so each row owns its own flash animation
 function HistRow({ item, colors }: { item: HistItem; colors: ReturnType<typeof makeColors> }) {
-  const flash    = useRef(new Animated.Value(0)).current;
-  const canCopy  = item.kind === 'text' || item.kind === 'image';
+  const flash  = useRef(new Animated.Value(0)).current;
+  const canAct = item.kind === 'text' || item.kind === 'image' ||
+                 (item.kind === 'file' && !!item.localPath);
+  const hint   = item.kind === 'file' ? 'tap to save' : 'tap to copy';
 
   async function handlePress() {
     Vibration.vibrate(50);
@@ -88,6 +93,7 @@ function HistRow({ item, colors }: { item: HistItem; colors: ReturnType<typeof m
       Animated.timing(flash, { toValue: 1, duration: 120, useNativeDriver: false }),
       Animated.timing(flash, { toValue: 0, duration: 530, useNativeDriver: false }),
     ]).start();
+
     if (item.kind === 'text') {
       Clipboard.setString(item.value);
     } else if (item.kind === 'image') {
@@ -95,20 +101,30 @@ function HistRow({ item, colors }: { item: HistItem; colors: ReturnType<typeof m
         const path = item.uri.split('?')[0];
         const b64  = await FileSystem.readAsStringAsync(path, { encoding: FileSystem.EncodingType.Base64 });
         Clipboard.setImage(b64);
-      } catch { /* cache evicted — image gone */ }
+      } catch { /* cache evicted */ }
+    } else if (item.kind === 'file' && item.localPath) {
+      try {
+        const info = await FileSystem.getInfoAsync(item.localPath);
+        if (!info.exists) {
+          Alert.alert('File unavailable', 'This file is no longer in cache. Send it again from your PC.');
+          return;
+        }
+        const name = item.localPath.split('/').pop() ?? item.label;
+        await Sharing.shareAsync(item.localPath, { dialogTitle: `Save ${name}` });
+      } catch (e) { Alert.alert('Error', String(e)); }
     }
   }
 
   const bgColor = flash.interpolate({ inputRange: [0, 1], outputRange: [colors.rowBg, '#1a6bff'] });
 
   return (
-    <Pressable onPress={canCopy ? handlePress : undefined}>
+    <Pressable onPress={canAct ? handlePress : undefined}>
       <Animated.View style={[styles.histRow, { backgroundColor: bgColor }]}>
         {item.kind === 'image' && (
           <Image source={{ uri: item.uri }} style={styles.histThumb} resizeMode="cover" />
         )}
         <Text style={[styles.histLabel, { color: colors.text }]} numberOfLines={1}>{item.label}</Text>
-        {canCopy && <Text style={[styles.histHint, { color: colors.sub }]}>tap to copy</Text>}
+        {canAct && <Text style={[styles.histHint, { color: colors.sub }]}>{hint}</Text>}
       </Animated.View>
     </Pressable>
   );
@@ -134,7 +150,7 @@ export default function App() {
   const isDark = themePref === 'system' ? systemScheme === 'dark' : themePref === 'dark';
   const colors = makeColors(isDark);
 
-  function pushItem(item: Omit<HistItem, 'id'>) {
+  function pushItem(item: HistItemData) {
     setHistory(prev => [{ ...item, id: ++_hid } as HistItem, ...prev].slice(0, HIST_MAX));
   }
 
@@ -160,7 +176,7 @@ export default function App() {
   }, []);
 
   // When app comes to foreground, pull the latest PC characteristic in case a BLE
-  // notification fired while iOS had the app suspended (image/file downloads especially)
+  // notification fired while iOS had the app suspended
   useEffect(() => {
     const sub = AppState.addEventListener('change', async (next) => {
       if (next !== 'active' || !deviceRef.current) return;
@@ -197,9 +213,9 @@ export default function App() {
       let binary  = '';
       for (let i = 0; i < bytes.length; i += CHUNK)
         binary += String.fromCharCode(...Array.from(bytes.subarray(i, i + CHUNK)));
-      const b64 = btoa(binary);
+      const b64  = btoa(binary);
       Clipboard.setImage(b64);
-      // Each image gets its own filename so history thumbnails stay valid
+      // Each image gets its own filename so multiple history thumbnails stay valid
       const dest = (FileSystem.cacheDirectory ?? '') + `clip_img_${Date.now()}.png`;
       FileSystem.writeAsStringAsync(dest, b64, { encoding: FileSystem.EncodingType.Base64 })
         .then(() => {
@@ -281,12 +297,15 @@ export default function App() {
       conn.monitorCharacteristicForService(SERVICE_UUID, PC_TO_IOS_UUID, async (err, char) => {
         if (err || !char?.value) return;
         const msg = base64ToUtf8(char.value);
+
         if (msg.startsWith('T:')) { applyPcMsg(msg).catch(() => {}); return; }
+
         if (msg === 'I:') {
           if (!httpRef.current) { Alert.alert('PC image', 'HTTP not available. Restart PC app, reconnect, try again.'); return; }
           applyPcMsg(msg).catch(e => Alert.alert('Image failed', String(e)));
           return;
         }
+
         if (msg.startsWith('F:')) {
           if (!httpRef.current) return;
           const fn             = msg.slice(2);
@@ -296,7 +315,8 @@ export default function App() {
             const dl = await FileSystem.downloadAsync(`http://${ip}:${port}/clip/file?token=${token}`, dest);
             if (dl.status !== 200) { Alert.alert('File from PC', `HTTP ${dl.status}`); return; }
             setLastItem({ kind: 'file', name: fn });
-            pushItem({ kind: 'file', label: `↓ ${fn}` });
+            // Store localPath so the history row can re-open the share sheet if dismissed
+            pushItem({ kind: 'file', label: `↓ ${fn}`, localPath: dest });
             if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(dest, { dialogTitle: `Save ${fn}` });
           } catch (e) { Alert.alert('File from PC', String(e)); }
         }
@@ -468,7 +488,7 @@ export default function App() {
 
       {history.length > 0 && (
         <View style={[styles.histCard, { backgroundColor: colors.card }]}>
-          <Text style={[styles.cardLabel, { color: colors.sub }]}>Recent (tap to copy)</Text>
+          <Text style={[styles.cardLabel, { color: colors.sub }]}>Recent (tap to copy / save)</Text>
           {history.map(item => (
             <HistRow key={item.id} item={item} colors={colors} />
           ))}

@@ -23,6 +23,16 @@ internal static class SettingsStore
         set => Write("Notifications", value);
     }
 
+    public static bool ContextMenu
+    {
+        get => Read("ContextMenu", defaultValue: true);
+        set
+        {
+            Write("ContextMenu", value);
+            StartupHelper.EnsureContextMenu(value);
+        }
+    }
+
     private static bool Read(string name, bool defaultValue)
     {
         try

@@ -13,6 +13,7 @@ internal sealed class MainForm : Form
     private readonly ToolStripMenuItem  _notificationsItem;
     private readonly ToolStripMenuItem  _recentMenu;
     private readonly ToolStripMenuItem  _openLogItem;
+    private readonly ToolStripMenuItem  _contextMenuToggleItem;
 
     // ── services ──────────────────────────────────────────────────────────
     private ClipboardMonitor? _clipboardMonitor;
@@ -50,6 +51,10 @@ internal sealed class MainForm : Form
                 System.Windows.Forms.MessageBox.Show("No transfers logged yet.", "ClipDropper");
         };
 
+        _contextMenuToggleItem = new ToolStripMenuItem("Explorer context menu (right-click)")
+                                 { Checked = SettingsStore.ContextMenu, CheckOnClick = true };
+        _contextMenuToggleItem.Click += (_, _) => SettingsStore.ContextMenu = _contextMenuToggleItem.Checked;
+
         RefreshHistoryMenu();
 
         var menu = new ContextMenuStrip();
@@ -57,6 +62,7 @@ internal sealed class MainForm : Form
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(_autoStartItem);
         menu.Items.Add(_notificationsItem);
+        menu.Items.Add(_contextMenuToggleItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(_recentMenu);
         menu.Items.Add(_openLogItem);
@@ -79,6 +85,7 @@ internal sealed class MainForm : Form
         if (SettingsStore.AutoStart) StartupHelper.EnsureAutoStart();
         StartupHelper.EnsureFirewallRule();
         StartupHelper.EnsureSendToShortcut();
+        StartupHelper.EnsureContextMenu(SettingsStore.ContextMenu);
 
         _http = new HttpServer();
         _http.FileReceived += OnFileReceived;
