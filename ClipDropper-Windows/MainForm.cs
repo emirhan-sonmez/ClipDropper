@@ -308,12 +308,32 @@ internal sealed class MainForm : Form
 
     private static Icon MakeIcon(bool connected)
     {
-        using var bmp = new Bitmap(16, 16);
+        var stream = System.Reflection.Assembly
+            .GetExecutingAssembly()
+            .GetManifestResourceStream("ClipDropper.icon_16.ico");
+
+        Bitmap bmp;
+        if (stream is not null)
+        {
+            using var baseIcon = new Icon(stream);
+            bmp = baseIcon.ToBitmap();
+        }
+        else
+        {
+            // Fallback if icon resource is missing
+            bmp = new Bitmap(16, 16);
+            using var g0 = Graphics.FromImage(bmp);
+            g0.Clear(Color.Transparent);
+        }
+
+        // Overlay a small connection-state dot in the bottom-right corner
         using var g   = Graphics.FromImage(bmp);
-        g.Clear(Color.Transparent);
-        using var brush = new SolidBrush(connected ? Color.LimeGreen : Color.DimGray);
-        g.FillEllipse(brush, 2, 2, 12, 12);
-        return Icon.FromHandle(bmp.GetHicon());
+        using var dot = new SolidBrush(connected ? Color.LimeGreen : Color.FromArgb(90, 90, 90));
+        g.FillEllipse(dot, 10, 10, 5, 5);
+
+        var hicon = bmp.GetHicon();
+        bmp.Dispose();
+        return Icon.FromHandle(hicon);
     }
 
     protected override void OnFormClosed(FormClosedEventArgs e)
