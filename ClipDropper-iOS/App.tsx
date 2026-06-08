@@ -141,13 +141,27 @@ export default function App() {
     }
   }
 
-  async function sendClipboardText() {
-    const device = deviceRef.current;
-    if (!device) { Alert.alert('Not connected', 'Connect to your PC first.'); return; }
+  async function sendClipboard() {
+    if (!deviceRef.current) { Alert.alert('Not connected', 'Connect to your PC first.'); return; }
     try {
+      const hasImg = await Clipboard.hasImage();
+      if (hasImg) {
+        if (!httpRef.current) {
+          Alert.alert('Not available', 'HTTP not ready. Restart the PC app, reconnect, then try again.');
+          return;
+        }
+        const raw = await Clipboard.getImage();
+        if (!raw) { Alert.alert('No image', 'Could not read clipboard image.'); return; }
+        const b64 = raw.includes(',') ? raw.split(',')[1] : raw;
+        const binary = atob(b64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        await uploadBytes(bytes, 'clipboard_image.png');
+        return;
+      }
       const text = await Clipboard.getString();
       if (!text) { Alert.alert('Empty clipboard', 'Nothing to send.'); return; }
-      await device.writeCharacteristicWithResponseForService(
+      await deviceRef.current.writeCharacteristicWithResponseForService(
         SERVICE_UUID, IOS_TO_PC_UUID, utf8ToBase64('T:' + text));
     } catch (e) { handleError(e as BleError); }
   }
@@ -193,22 +207,6 @@ export default function App() {
       Alert.alert('Upload failed', String(e));
     }
     return false;
-  }
-
-  async function sendClipboardImage() {
-    if (!httpRef.current) { Alert.alert('Not connected', 'Connect to your PC first.'); return; }
-    try {
-      const hasImg = await Clipboard.hasImage();
-      if (!hasImg) { Alert.alert('No image', 'No image in clipboard. Copy an image first.'); return; }
-      const b64 = await Clipboard.getImage();
-      if (!b64) { Alert.alert('No image', 'Could not read clipboard image.'); return; }
-      const binary = atob(b64);
-      const bytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-      await uploadBytes(bytes, 'clipboard_image.png');
-    } catch (e) {
-      Alert.alert('Failed', String(e));
-    }
   }
 
   async function pickAndSendPhoto() {
@@ -285,10 +283,10 @@ export default function App() {
 
         <Pressable
           style={[styles.btn, styles.btnGreen, !connected && styles.btnDisabled]}
-          onPress={sendClipboardText}
+          onPress={sendClipboard}
           disabled={!connected}
         >
-          <Text style={styles.btnText}>Send Clipboard Text → PC</Text>
+          <Text style={styles.btnText}>Send Clipboard → PC</Text>
         </Pressable>
 
         <Pressable
@@ -297,14 +295,6 @@ export default function App() {
           disabled={!connected}
         >
           <Text style={styles.btnText}>Pick File → PC</Text>
-        </Pressable>
-
-        <Pressable
-          style={[styles.btn, styles.btnPurple, !connected && styles.btnDisabled]}
-          onPress={sendClipboardImage}
-          disabled={!connected}
-        >
-          <Text style={styles.btnText}>Send Clipboard Image → PC</Text>
         </Pressable>
 
         <Pressable
