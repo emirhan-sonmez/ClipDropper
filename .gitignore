@@ -1,0 +1,52 @@
+# ============================================================
+# .NET / C# (ClipDropper-Windows)
+# ============================================================
+ClipDropper-Windows/bin/
+ClipDropper-Windows/obj/
+ClipDropper-Windows/publish/
+ClipDropper-Windows/installer-output/
+
+# ============================================================
+# Code signing — NEVER commit certificates or passwords
+# ============================================================
+*.pfx
+*.p12
+*.key
+*.cer
+*.spc
+
+# ============================================================
+# Node / Expo (ClipDropper-iOS)
+# ============================================================
+ClipDropper-iOS/node_modules/
+ClipDropper-iOS/.expo/
+ClipDropper-iOS/dist/
+ClipDropper-iOS/web-build/
+ClipDropper-iOS/expo-env.d.ts
+ClipDropper-iOS/*.tsbuildinfo
+ClipDropper-iOS/ios/
+ClipDropper-iOS/android/
+
+# ============================================================
+# Environment & secrets
+# ============================================================
+.env
+.env.local
+.env*.local
+
+# ============================================================
+# Claude Code / AI editor settings
+# ============================================================
+.claude/
+**/.claude/
+
+# ============================================================
+# OS / editor noise
+# ============================================================
+.DS_Store
+Thumbs.db
+desktop.ini
+*.suo
+*.user
+.vs/
+.vscode/settings.json
