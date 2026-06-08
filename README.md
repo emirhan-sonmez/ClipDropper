@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="ClipDropper-iOS/assets/icon.png" width="120" alt="ClipDropper" />
+<img src="ClipDropper-Windows/ClipDropperIcon.png" width="140" alt="ClipDropper" />
 
 # ClipDropper
 
@@ -13,7 +13,7 @@ No cloud. No account. No cables. Just copy on one device and paste on the other.
 [![.NET](https://img.shields.io/badge/.NET-8.0-512bd4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/download/dotnet/8.0)
 [![Expo](https://img.shields.io/badge/iOS-Expo-000020?logo=expo&logoColor=white)](ClipDropper-iOS)
 
-[Download Installer](#installation) · [Build from Source](#build-from-source) · [How it Works](#how-it-works)
+[Download for Windows](#windows) · [Install on iPhone](#ios) · [Build from Source](#build-from-source) · [How it Works](#how-it-works)
 
 </div>
 
@@ -71,24 +71,48 @@ ClipDropper uses **Bluetooth Low Energy (BLE)** for discovery and small payloads
 
 ## Installation
 
-### Option A — Windows Installer (easiest)
+### Windows
 
 1. Go to the [Releases](https://github.com/emirhan-sonmez/ClipDropper/releases) page
 2. Download `ClipDropper-Setup.exe`
 3. Run the installer — it will detect and offer to install .NET 8 if missing
 4. Launch ClipDropper from the Start Menu or desktop shortcut
 
-### Option B — iOS App
+### iOS
 
-> The iOS app is currently in development. You can run it locally with Expo Go:
+The iOS app is not on the App Store yet. You can install it for free on your own iPhone using **Sideloadly** — no developer account or jailbreak required.
 
-```sh
-cd ClipDropper-iOS
-npm install
-npx expo start
-```
+> **Heads up:** Apps sideloaded with a free Apple ID expire after **7 days** and need to be re-signed. Sideloadly can do this automatically when your phone is connected.
 
-Scan the QR code with **Expo Go** on your iPhone.
+#### Step 1 — Download the files
+
+- Download **Sideloadly** (free): [sideloadly.io](https://sideloadly.io)
+- Download `ClipDropper.ipa` from the [Releases](https://github.com/emirhan-sonmez/ClipDropper/releases) page
+
+#### Step 2 — Install on your iPhone
+
+1. Connect your iPhone to your PC via USB
+2. If prompted on your iPhone, tap **Trust This Computer**
+3. Open Sideloadly and drag `ClipDropper.ipa` into the window
+4. Enter your Apple ID and click **Start**
+5. Wait for the installation to complete
+
+#### Step 3 — Trust the app on your iPhone
+
+Apple blocks untrusted apps from opening. You need to trust your own certificate once:
+
+1. On your iPhone, go to **Settings → General → VPN & Device Management**
+2. Under **Developer App**, find your Apple ID
+3. Tap **Trust "[your Apple ID]"** → **Trust**
+
+#### Step 4 — Enable Developer Mode (iOS 16 and later)
+
+1. Go to **Settings → Privacy & Security → Developer Mode**
+2. Toggle it **On**
+3. Tap **Restart** when prompted
+4. After restart, tap **Turn On** to confirm
+
+The app is now ready to use.
 
 ---
 

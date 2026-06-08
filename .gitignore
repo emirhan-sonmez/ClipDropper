@@ -7,13 +7,14 @@ ClipDropper-Windows/publish/
 ClipDropper-Windows/installer-output/
 
 # ============================================================
-# Code signing — NEVER commit certificates or passwords
+# Code signing & build outputs — never commit these
 # ============================================================
 *.pfx
 *.p12
 *.key
 *.cer
 *.spc
+*.ipa
 
 # ============================================================
 # Node / Expo (ClipDropper-iOS)
