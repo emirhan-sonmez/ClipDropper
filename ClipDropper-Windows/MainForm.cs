@@ -1,15 +1,27 @@
 using System.Drawing.Imaging;
+using System.IO.Pipes;
 
 namespace ClipDropper;
 
 internal sealed class MainForm : Form
 {
-    private readonly NotifyIcon _trayIcon;
-    private readonly ToolStripMenuItem _statusItem;
+    // ── tray ──────────────────────────────────────────────────────────────
+    private readonly NotifyIcon         _trayIcon;
+    private readonly ToolStripMenuItem  _statusItem;
+    private readonly ToolStripMenuItem  _autoStartItem;
+    private readonly ToolStripMenuItem  _notificationsItem;
+    private readonly ToolStripMenuItem  _recentMenu;
+
+    // ── services ──────────────────────────────────────────────────────────
     private ClipboardMonitor? _clipboardMonitor;
-    private BlePeripheral? _ble;
-    private HttpServer? _http;
+    private BlePeripheral?    _ble;
+    private HttpServer?       _http;
+
+    // ── state ─────────────────────────────────────────────────────────────
     private volatile bool _suppressNext;
+    private readonly CancellationTokenSource _pipeCts = new();
+    private readonly Queue<(string label, string? rawText)> _history = new();
+    private const int HistoryMax = 3;
 
     public MainForm()
     {
@@ -18,10 +30,25 @@ internal sealed class MainForm : Form
         FormBorderStyle = FormBorderStyle.None;
         Size            = new Size(1, 1);
 
-        _statusItem = new ToolStripMenuItem("Starting…") { Enabled = false };
+        _statusItem        = new ToolStripMenuItem("Starting…") { Enabled = false };
+        _autoStartItem     = new ToolStripMenuItem("Auto-start with Windows")
+                             { Checked = SettingsStore.AutoStart, CheckOnClick = true };
+        _notificationsItem = new ToolStripMenuItem("Show notifications")
+                             { Checked = SettingsStore.Notifications, CheckOnClick = true };
+        _recentMenu        = new ToolStripMenuItem("Recent");
+
+        _autoStartItem.Click     += (_, _) => SettingsStore.AutoStart     = _autoStartItem.Checked;
+        _notificationsItem.Click += (_, _) => SettingsStore.Notifications = _notificationsItem.Checked;
+
+        RefreshHistoryMenu();
 
         var menu = new ContextMenuStrip();
         menu.Items.Add(_statusItem);
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(_autoStartItem);
+        menu.Items.Add(_notificationsItem);
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(_recentMenu);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Exit", null, (_, _) => Application.Exit());
 
@@ -38,8 +65,9 @@ internal sealed class MainForm : Form
     {
         base.OnLoad(e);
 
-        StartupHelper.EnsureAutoStart();
+        if (SettingsStore.AutoStart) StartupHelper.EnsureAutoStart();
         StartupHelper.EnsureFirewallRule();
+        StartupHelper.EnsureSendToShortcut();
 
         _http = new HttpServer();
         _http.FileReceived += OnFileReceived;
@@ -53,16 +81,64 @@ internal sealed class MainForm : Form
         _ble.TextReceived      += OnRemoteText;
         _ble.ConnectionChanged += OnConnectionChanged;
 
+        _ = Task.Run(() => RunPipeServerAsync(_pipeCts.Token));
+
         try
         {
             var ok = await _ble.StartAsync();
-            SetStatus(ok ? "Advertising…" : "Bluetooth unavailable — check adapter");
+            SetStatus(ok ? "Advertising…" : "Bluetooth unavailable");
         }
         catch (Exception ex)
         {
             SetStatus($"BLE error: {ex.Message}");
         }
     }
+
+    // ── pipe server (B1) ──────────────────────────────────────────────────
+
+    private async Task RunPipeServerAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                using var pipe = new NamedPipeServerStream(
+                    Program.PipeName, PipeDirection.In,
+                    NamedPipeServerStream.MaxAllowedServerInstances,
+                    PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+                await pipe.WaitForConnectionAsync(ct);
+                using var reader = new StreamReader(pipe);
+                string? line;
+                while ((line = await reader.ReadLineAsync(ct)) != null)
+                {
+                    if (File.Exists(line) && IsHandleCreated)
+                    {
+                        var path = line;
+                        Invoke(() => _ = SendLocalFileToiOSAsync(path));
+                    }
+                }
+            }
+            catch (OperationCanceledException) { break; }
+            catch { /* pipe reset — restart */ }
+        }
+    }
+
+    private async Task SendLocalFileToiOSAsync(string filePath)
+    {
+        if (_http is null || _ble is null)
+        {
+            Notify("ClipDropper", "Not connected to iPhone");
+            return;
+        }
+        var bytes    = await File.ReadAllBytesAsync(filePath);
+        var filename = Path.GetFileName(filePath);
+        _http.SetPendingFile(bytes, filename);
+        await _ble.NotifyFileAvailableAsync(filename);
+        Notify("ClipDropper", $"Sending {filename}…");
+        AddHistory($"→ {filename}", null);
+    }
+
+    // ── clipboard events ──────────────────────────────────────────────────
 
     private void OnLocalText(string text)
     {
@@ -85,7 +161,9 @@ internal sealed class MainForm : Form
         Invoke(() =>
         {
             Clipboard.SetText(text);
-            _trayIcon.ShowBalloonTip(2000, "ClipDropper", "Text received from iPhone", ToolTipIcon.Info);
+            var preview = text.Length > 30 ? text[..30] + "…" : text;
+            Notify("ClipDropper", $"✓ Text: {preview}");
+            AddHistory($"\"{preview}\"", text);
         });
     }
 
@@ -97,22 +175,51 @@ internal sealed class MainForm : Form
         File.WriteAllBytes(dest, bytes);
 
         if (!IsDisposed && IsHandleCreated)
-            Invoke(() => _trayIcon.ShowBalloonTip(
-                3000, "ClipDropper", $"File saved: {filename}", ToolTipIcon.Info));
+            Invoke(() =>
+            {
+                Notify("ClipDropper", $"✓ {filename} saved");
+                AddHistory($"↓ {filename}", null);
+            });
     }
 
-    private static string UniqueFilePath(string folder, string filename)
+    // ── history (B3) ─────────────────────────────────────────────────────
+
+    private void AddHistory(string label, string? rawText)
     {
-        var path = Path.Combine(folder, filename);
-        if (!File.Exists(path)) return path;
-        var name = Path.GetFileNameWithoutExtension(filename);
-        var ext  = Path.GetExtension(filename);
-        for (var i = 2; ; i++)
+        while (_history.Count >= HistoryMax) _history.Dequeue();
+        _history.Enqueue((label, rawText));
+        RefreshHistoryMenu();
+    }
+
+    private void RefreshHistoryMenu()
+    {
+        _recentMenu.DropDownItems.Clear();
+        if (_history.Count == 0)
         {
-            path = Path.Combine(folder, $"{name} ({i}){ext}");
-            if (!File.Exists(path)) return path;
+            _recentMenu.DropDownItems.Add(new ToolStripMenuItem("No recent items") { Enabled = false });
+            return;
+        }
+        foreach (var (label, rawText) in _history.Reverse())
+        {
+            var item = new ToolStripMenuItem(label);
+            if (rawText is not null)
+            {
+                var capture = rawText;
+                item.Click += (_, _) => Clipboard.SetText(capture);
+            }
+            _recentMenu.DropDownItems.Add(item);
         }
     }
+
+    // ── notification helper ───────────────────────────────────────────────
+
+    private void Notify(string title, string text)
+    {
+        if (!SettingsStore.Notifications) return;
+        _trayIcon.ShowBalloonTip(1500, title, text, ToolTipIcon.None);
+    }
+
+    // ── connection ────────────────────────────────────────────────────────
 
     private void OnConnectionChanged(bool connected)
     {
@@ -133,6 +240,21 @@ internal sealed class MainForm : Form
         _trayIcon.Text = tooltip.Length > 63 ? tooltip[..63] : tooltip;
     }
 
+    // ── helpers ───────────────────────────────────────────────────────────
+
+    private static string UniqueFilePath(string folder, string filename)
+    {
+        var path = Path.Combine(folder, filename);
+        if (!File.Exists(path)) return path;
+        var name = Path.GetFileNameWithoutExtension(filename);
+        var ext  = Path.GetExtension(filename);
+        for (var i = 2; ; i++)
+        {
+            path = Path.Combine(folder, $"{name} ({i}){ext}");
+            if (!File.Exists(path)) return path;
+        }
+    }
+
     private static Icon MakeIcon(bool connected)
     {
         using var bmp = new Bitmap(16, 16);
@@ -145,6 +267,8 @@ internal sealed class MainForm : Form
 
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
+        _pipeCts.Cancel();
+        _pipeCts.Dispose();
         _trayIcon.Visible = false;
         _trayIcon.Dispose();
         _clipboardMonitor?.Dispose();

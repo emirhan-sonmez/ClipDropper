@@ -10,6 +10,8 @@ internal sealed class HttpServer : IDisposable
     private readonly string _token;
     private readonly CancellationTokenSource _cts = new();
     private volatile byte[]? _pendingImage;
+    private volatile byte[]? _pendingFile;
+    private volatile string   _pendingFileName = "file";
 
     public event Action<byte[], string>? FileReceived;
     public string Endpoint { get; }
@@ -25,6 +27,12 @@ internal sealed class HttpServer : IDisposable
     }
 
     public void SetImage(byte[] pngBytes) => _pendingImage = pngBytes;
+
+    public void SetPendingFile(byte[] bytes, string filename)
+    {
+        _pendingFile     = bytes;
+        _pendingFileName = Path.GetFileName(filename);
+    }
 
     private async Task AcceptLoopAsync(CancellationToken ct)
     {
@@ -82,6 +90,16 @@ internal sealed class HttpServer : IDisposable
                 await RespondAsync(stream, 404, "text/plain", "No image"u8.ToArray());
             else
                 await RespondAsync(stream, 200, "image/png", img);
+            return;
+        }
+
+        if (method == "GET" && path == "/clip/file")
+        {
+            var file = _pendingFile;
+            if (file == null)
+                await RespondAsync(stream, 404, "text/plain", "No file"u8.ToArray());
+            else
+                await RespondAsync(stream, 200, "application/octet-stream", file);
             return;
         }
 

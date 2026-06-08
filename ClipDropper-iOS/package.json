@@ -11,7 +11,8 @@
     "react-native-ble-plx": "^3.5.1",
     "expo-document-picker": "*",
     "expo-file-system": "*",
-    "expo-image-picker": "*"
+    "expo-image-picker": "*",
+    "expo-sharing": "*"
   },
   "devDependencies": {
     "@types/react": "~19.2.2",

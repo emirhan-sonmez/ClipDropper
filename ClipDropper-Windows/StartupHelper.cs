@@ -31,6 +31,41 @@ internal static class StartupHelper
         catch { /* registry unavailable — skip */ }
     }
 
+    public static void RemoveAutoStart()
+    {
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(RunKey, writable: true);
+            key?.DeleteValue(AppName, throwOnMissingValue: false);
+        }
+        catch { }
+    }
+
+    public static void EnsureSendToShortcut()
+    {
+        var exePath = RealExePath();
+        if (exePath is null) return;
+
+        var sendTo  = Environment.GetFolderPath(Environment.SpecialFolder.SendTo);
+        var lnkPath = Path.Combine(sendTo, "ClipDropper.lnk");
+        if (File.Exists(lnkPath)) return;
+
+        try
+        {
+            var ps = $"$s=(New-Object -COM WScript.Shell).CreateShortcut('{lnkPath.Replace("'","''")}');" +
+                     $"$s.TargetPath='{exePath.Replace("'","''")}';$s.Save()";
+            using var proc = Process.Start(new ProcessStartInfo
+            {
+                FileName        = "powershell",
+                Arguments       = $"-NoProfile -NonInteractive -Command \"{ps}\"",
+                CreateNoWindow  = true,
+                UseShellExecute = false,
+            });
+            proc?.WaitForExit();
+        }
+        catch { }
+    }
+
     public static void EnsureFirewallRule()
     {
         var exePath = RealExePath();

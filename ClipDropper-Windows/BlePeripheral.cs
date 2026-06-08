@@ -109,6 +109,12 @@ internal sealed class BlePeripheral : IDisposable
         await NotifyAsync(System.Text.Encoding.UTF8.GetBytes(GattProtocol.PfxImage));
     }
 
+    public async Task NotifyFileAvailableAsync(string filename)
+    {
+        if (_pcToIos is null || _pcToIos.SubscribedClients.Count == 0) return;
+        await NotifyAsync(System.Text.Encoding.UTF8.GetBytes(GattProtocol.PfxFile + filename));
+    }
+
     private async Task NotifyAsync(byte[] bytes)
     {
         using var writer = new DataWriter();

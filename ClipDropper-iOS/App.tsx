@@ -13,6 +13,7 @@ import Clipboard from '@react-native-clipboard/clipboard';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
+import * as Sharing from 'expo-sharing';
 
 const SERVICE_UUID   = '4fafc201-1fb5-459e-8fcc-c5c9c3319abc';
 const PC_TO_IOS_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
@@ -145,6 +146,27 @@ export default function App() {
             setLastItem({ kind: 'image', uri: dest + '?t=' + Date.now() });
           } catch (e) {
             Alert.alert('Image failed', `Could not reach ${ip}:${port}\n${String(e)}\n\nCheck: same WiFi? Windows Firewall allowed?`);
+          }
+        }
+
+        if (msg.startsWith('F:')) {
+          if (!httpRef.current) return;
+          const filename = msg.slice(2);
+          const { ip, port, token } = httpRef.current;
+          const dest = (FileSystem.cacheDirectory ?? '') + filename;
+          try {
+            const dl = await FileSystem.downloadAsync(
+              `http://${ip}:${port}/clip/file?token=${token}`, dest);
+            if (dl.status !== 200) {
+              Alert.alert('File from PC', `HTTP ${dl.status}`);
+              return;
+            }
+            setLastItem({ kind: 'file', name: filename });
+            if (await Sharing.isAvailableAsync()) {
+              await Sharing.shareAsync(dest, { dialogTitle: `Save ${filename}` });
+            }
+          } catch (e) {
+            Alert.alert('File from PC', String(e));
           }
         }
       });

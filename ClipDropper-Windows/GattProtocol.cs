@@ -12,4 +12,5 @@ internal static class GattProtocol
 
     public const string PfxText  = "T:";
     public const string PfxImage = "I:";
+    public const string PfxFile  = "F:";
 }
