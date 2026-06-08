@@ -105,24 +105,36 @@ export default function App() {
           return;
         }
 
-        if (msg === 'I:' && httpRef.current) {
+        if (msg === 'I:') {
+          if (!httpRef.current) {
+            Alert.alert(
+              'PC image',
+              'Image copied on PC but HTTP endpoint not available.\n\nFix: restart the ClipDropper PC app, reconnect, then try again.',
+            );
+            return;
+          }
           const { ip, port, token } = httpRef.current;
-          const dest = FileSystem.cacheDirectory + 'clipboard_img.png';
+          const dest = (FileSystem.cacheDirectory ?? '') + 'clipboard_img.png';
           try {
-            await FileSystem.downloadAsync(
+            const dl = await FileSystem.downloadAsync(
               `http://${ip}:${port}/clip/image?token=${token}`, dest);
+            if (dl.status !== 200) {
+              Alert.alert('Image failed', `HTTP ${dl.status} from ${ip}:${port}\n\nCheck: same WiFi? Windows Firewall allowed?`);
+              return;
+            }
             const b64 = await FileSystem.readAsStringAsync(dest,
               { encoding: FileSystem.EncodingType.Base64 });
             Clipboard.setImage(b64);
             setLastItem({ kind: 'image', uri: dest + '?t=' + Date.now() });
           } catch (e) {
-            console.warn('Image download failed', e);
+            Alert.alert('Image failed', `Could not reach ${ip}:${port}\n${String(e)}\n\nCheck: same WiFi? Windows Firewall allowed?`);
           }
         }
       });
 
       setStatus('connected');
-      setMsg(`Connected to ${device.name ?? 'ClipDropper PC'}`);
+      const httpReady = httpRef.current ? ' · HTTP ready' : ' · No HTTP (restart PC app)';
+      setMsg(`Connected to ${device.name ?? 'ClipDropper PC'}${httpReady}`);
     } catch (e) {
       handleError(e as BleError);
     }
@@ -150,11 +162,19 @@ export default function App() {
     const url  = `http://${http.ip}:${http.port}/clip/upload?token=${http.token}&name=${encodeURIComponent(file.name)}`;
 
     try {
-      const res = await FileSystem.uploadAsync(url, file.uri, {
-        httpMethod:  'POST',
-        uploadType:  FileSystem.FileSystemUploadType.BINARY_CONTENT,
+      const b64 = await FileSystem.readAsStringAsync(file.uri, {
+        encoding: FileSystem.EncodingType.Base64,
       });
-      if (res.status === 200) {
+      const binary = atob(b64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body: bytes.buffer,
+      });
+      if (res.ok) {
         setLastItem({ kind: 'file', name: file.name });
         Alert.alert('Sent!', `${file.name} saved to your PC's Downloads folder.`);
       } else {
