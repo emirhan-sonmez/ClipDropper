@@ -16,8 +16,26 @@ echo.
 set SIGN_CERT=
 set SIGN_PASS=
 
-:: --- Step 1: Publish the app ---
-echo [1/3] Publishing ClipDropper (Release, win-x64)...
+:: --- Step 1: Download .NET 8 Desktop Runtime if not present ---
+echo [1/4] Checking .NET 8 Desktop Runtime installer...
+if not exist redist mkdir redist
+if not exist "redist\windowsdesktop-runtime-8.0-win-x64.exe" (
+    echo Downloading .NET 8 Desktop Runtime ~55 MB...
+    curl -L -o "redist\windowsdesktop-runtime-8.0-win-x64.exe" "https://aka.ms/dotnet/8.0/windowsdesktop-runtime-win-x64.exe"
+    if errorlevel 1 (
+        echo.
+        echo ERROR: Download failed. Save it manually as redist\windowsdesktop-runtime-8.0-win-x64.exe
+        echo Download from: https://dotnet.microsoft.com/download/dotnet/8.0
+        pause
+        exit /b 1
+    )
+) else (
+    echo Already present, skipping download.
+)
+echo.
+
+:: --- Step 2: Publish the app ---
+echo [2/4] Publishing ClipDropper (Release, win-x64)...
 if exist publish rmdir /s /q publish
 
 dotnet publish ClipDropper.csproj ^
@@ -38,18 +56,18 @@ echo.
 
 :: --- Step 2: Sign the app executable (if certificate configured) ---
 if not "!SIGN_CERT!"=="" (
-  echo [2/3] Signing ClipDropper.exe...
+  echo [3/4] Signing ClipDropper.exe...
   call :sign_file "publish\ClipDropper.exe"
   if errorlevel 1 goto :sign_error
   echo Done.
   echo.
 ) else (
-  echo [2/3] Skipping code signing ^(SIGN_CERT not set^)
+  echo [3/4] Skipping code signing ^(SIGN_CERT not set^)
   echo.
 )
 
 :: --- Step 3: Find and run Inno Setup compiler ---
-echo [3/3] Compiling installer with Inno Setup...
+echo [4/4] Compiling installer with Inno Setup...
 
 set ISCC=
 for %%P in (

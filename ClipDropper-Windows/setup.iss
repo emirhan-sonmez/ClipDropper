@@ -38,6 +38,7 @@ Name: "startup"; Description: "Start {#MyAppName} automatically with Windows"; G
 
 [Files]
 Source: "{#SourcePath}publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
+Source: "{#SourcePath}redist\windowsdesktop-runtime-8.0-win-x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall; Check: not IsDotNet8DesktopRuntimeInstalled
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
@@ -48,6 +49,7 @@ Name: "{commondesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: 
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "{#MyAppName}"; ValueData: """{app}\{#MyAppExeName}"""; Flags: uninsdeletevalue; Tasks: startup
 
 [Run]
+Filename: "{tmp}\windowsdesktop-runtime-8.0-win-x64.exe"; Parameters: "/install /quiet /norestart"; Check: not IsDotNet8DesktopRuntimeInstalled; StatusMsg: "Installing .NET 8 Desktop Runtime..."; Flags: waituntilterminated runhidden
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
@@ -67,21 +69,3 @@ begin
   end;
 end;
 
-function InitializeSetup(): Boolean;
-var
-  ErrorCode: Integer;
-begin
-  Result := True;
-
-  if IsDotNet8DesktopRuntimeInstalled() then
-    Exit;
-
-  MsgBox(
-    '{#MyAppName} requires the .NET 8 Desktop Runtime, which is not installed.' + #13#10 + #13#10 +
-    'The .NET 8 Desktop Runtime download page will open in your browser.' + #13#10 +
-    'After installing it, please run this installer again.',
-    mbError, MB_OK);
-
-  ShellExec('open', 'https://dotnet.microsoft.com/download/dotnet/8.0', '', '', SW_SHOW, ewNoWait, ErrorCode);
-  Result := False;
-end;

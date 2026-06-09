@@ -5,6 +5,7 @@ ClipDropper-Windows/bin/
 ClipDropper-Windows/obj/
 ClipDropper-Windows/publish/
 ClipDropper-Windows/installer-output/
+ClipDropper-Windows/redist/
 
 # ============================================================
 # Code signing & build outputs — never commit these
