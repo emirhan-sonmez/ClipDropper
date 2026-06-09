@@ -17,6 +17,9 @@
       }
     },
     "plugins": [
+      ["expo-camera", {
+        "cameraPermission": "Allow ClipDropper to scan QR codes for pairing."
+      }],
       ["expo-document-picker"],
       ["expo-image-picker", {
         "photosPermission": "ClipDropper can send your photos to your PC."

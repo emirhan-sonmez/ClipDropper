@@ -21,6 +21,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import * as Sharing from 'expo-sharing';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 
 const SERVICE_UUID   = '4fafc201-1fb5-459e-8fcc-c5c9c3319abc';
 const PC_TO_IOS_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
@@ -45,9 +46,13 @@ function utf8ToBase64(str: string): string {
 }
 
 function newUUID(): string {
-  const arr = new Uint8Array(16);
-  crypto.getRandomValues(arr);
-  return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
+  try {
+    const arr = new Uint8Array(16);
+    crypto.getRandomValues(arr);
+    return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
+  } catch {
+    return Array.from({ length: 32 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+  }
 }
 
 function parseQrUrl(url: string): { host: string; port: string; ptoken: string } | null {
@@ -160,6 +165,7 @@ export default function App() {
   const [showOnboard,   setShowOnboard]   = useState(false);
   const [themePref,     setThemePref]     = useState<ThemePref>('system');
   const [pairRequired,  setPairRequired]  = useState(false);
+  const [showScanner,   setShowScanner]   = useState(false);
 
   const deviceRef          = useRef<Device | null>(null);
   const httpRef            = useRef<{ ip: string; port: string; token: string } | null>(null);
@@ -169,6 +175,9 @@ export default function App() {
   const deviceUUIDRef      = useRef(newUUID()); // pre-filled so deep links never race
   const handshakeCompleted = useRef(false);
   const gotPairRequired    = useRef(false);
+  const qrScannedRef       = useRef(false);
+
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
   const isDark = themePref === 'system' ? systemScheme === 'dark' : themePref === 'dark';
   const colors = makeColors(isDark);
@@ -537,6 +546,27 @@ export default function App() {
     setMsg((e as BleError).message ?? String(e));
   }
 
+  async function openScanner() {
+    qrScannedRef.current = false;
+    if (!cameraPermission?.granted) {
+      const result = await requestCameraPermission();
+      if (!result.granted) {
+        Alert.alert('Camera permission required', 'Please allow camera access in Settings to scan QR codes.');
+        return;
+      }
+    }
+    setShowScanner(true);
+  }
+
+  function onQrScanned({ data }: { data: string }) {
+    if (qrScannedRef.current) return;
+    qrScannedRef.current = true;
+    setShowScanner(false);
+    const p = parseQrUrl(data);
+    if (p) handleQrPair(p.host, p.port, p.ptoken);
+    else Alert.alert('Invalid QR', 'Not a ClipDropper pairing code. Show the QR from the PC tray "Pair New Device" menu.');
+  }
+
   const isConn = status === 'connected';
   const busy   = status === 'scanning' || status === 'connecting';
 
@@ -561,6 +591,33 @@ export default function App() {
         </View>
       </Modal>
 
+
+      {/* QR Scanner */}
+      <Modal visible={showScanner} animationType="slide" onRequestClose={() => setShowScanner(false)}>
+        <View style={{ flex: 1, backgroundColor: '#000' }}>
+          {cameraPermission?.granted ? (
+            <CameraView
+              style={{ flex: 1 }}
+              facing="back"
+              onBarcodeScanned={onQrScanned}
+              barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
+            />
+          ) : (
+            <View style={styles.overlay}>
+              <Pressable style={styles.btn} onPress={requestCameraPermission}>
+                <Text style={styles.btnText}>Grant Camera Permission</Text>
+              </Pressable>
+            </View>
+          )}
+          <View style={styles.scannerOverlay}>
+            <Text style={styles.scannerHint}>Point at the QR code shown on your PC</Text>
+            <Pressable style={[styles.btn, { marginTop: 12, alignSelf: 'center', paddingHorizontal: 32 }]}
+              onPress={() => setShowScanner(false)}>
+              <Text style={styles.btnText}>Cancel</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
 
       <View style={styles.titleRow}>
         <Text style={[styles.title, { color: colors.text }]}>ClipDropper</Text>
@@ -605,11 +662,16 @@ export default function App() {
         {pairRequired && (
           <View style={[styles.pairCard, { backgroundColor: colors.card }]}>
             <Text style={[styles.pairTitle, { color: '#af52de' }]}>Pairing Required</Text>
-            <Text style={[styles.pairStep, { color: colors.text }]}>1. On your PC, click "Pair New Device" in the ClipDropper tray icon</Text>
-            <Text style={[styles.pairStep, { color: colors.text }]}>2. Open your iPhone Camera app and scan the QR code on screen</Text>
-            <Text style={[styles.pairStep, { color: colors.text }]}>3. Tap "Open in ClipDropper" when prompted — pairing completes automatically</Text>
+            <Text style={[styles.pairStep, { color: colors.text }]}>On your PC, click "Pair New Device" in the ClipDropper tray icon, then scan the QR code:</Text>
+            <Pressable style={[styles.btn, styles.btnPurple, { marginTop: 8 }]} onPress={openScanner}>
+              <Text style={styles.btnText}>Scan QR Code</Text>
+            </Pressable>
           </View>
         )}
+
+        <Pressable style={[styles.btn, styles.btnPurple]} onPress={openScanner}>
+          <Text style={styles.btnText}>Scan QR to Pair</Text>
+        </Pressable>
 
         <Pressable style={[styles.btn, styles.btnGreen,  !isConn && styles.btnDisabled]} onPress={sendClipboard}   disabled={!isConn}>
           <Text style={styles.btnText}>Send Clipboard → PC</Text>
@@ -669,4 +731,6 @@ const styles = StyleSheet.create({
   pairCard:         { borderRadius: 12, padding: 14, width: '100%', borderLeftWidth: 3, borderLeftColor: '#af52de' },
   pairTitle:        { fontSize: 13, fontWeight: '700', marginBottom: 8 },
   pairStep:         { fontSize: 14, marginBottom: 6, lineHeight: 20 },
+  scannerOverlay:   { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 32, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center' },
+  scannerHint:      { color: '#fff', fontSize: 15, textAlign: 'center', fontWeight: '500' },
 });
