@@ -7,6 +7,7 @@ import {
   Image,
   Linking,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -98,6 +99,8 @@ type HistItemData =
   | { kind: 'image'; label: string; uri: string }
   | { kind: 'file';  label: string; localPath?: string };
 type HistItem = HistItemData & { id: number };
+
+const MY_DEVICE_NAME = Platform.isPad ? 'iPad' : 'iPhone';
 
 const manager = new BleManager({
   restoreStateIdentifier: 'ClipDropperBLERestoreIdentifier',
@@ -395,7 +398,7 @@ export default function App() {
 
       await conn.writeCharacteristicWithResponseForService(
         SERVICE_UUID, IOS_TO_PC_UUID,
-        utf8ToBase64(`HELLO:${deviceUUIDRef.current}:iPhone`));
+        utf8ToBase64(`HELLO:${deviceUUIDRef.current}:${MY_DEVICE_NAME}`));
 
       // 5s fallback: old PC builds don't speak the pairing protocol — connect directly
       setTimeout(async () => {
@@ -435,7 +438,7 @@ export default function App() {
       const res = await fetch(`http://${host}:${port}/pair?ptoken=${encodeURIComponent(ptoken)}`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ deviceId: deviceUUIDRef.current, deviceName: 'iPhone' }),
+        body:    JSON.stringify({ deviceId: deviceUUIDRef.current, deviceName: MY_DEVICE_NAME }),
         signal:  ac.signal,
       });
       clearTimeout(timer);
@@ -444,7 +447,7 @@ export default function App() {
         if (deviceRef.current) {
           await deviceRef.current.writeCharacteristicWithResponseForService(
             SERVICE_UUID, IOS_TO_PC_UUID,
-            utf8ToBase64(`HELLO:${deviceUUIDRef.current}:iPhone`));
+            utf8ToBase64(`HELLO:${deviceUUIDRef.current}:${MY_DEVICE_NAME}`));
         }
       } else {
         const body = await res.text().catch(() => '');
@@ -651,109 +654,167 @@ export default function App() {
         </Pressable>
       </View>
 
-      <View style={[styles.dot, { backgroundColor: dotColor(status, rssi) }]} />
-      <Text style={[styles.statusMsg, { color: colors.sub }]}>{statusMsg}</Text>
+      {/* Status card */}
+      <View style={[styles.statusCard, { backgroundColor: colors.card }]}>
+        <View style={[styles.statusDotLg, { backgroundColor: dotColor(status, rssi) }]} />
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.statusMain, { color: colors.text }]}>
+            {isConn ? 'Connected to PC' : busy ? (status === 'scanning' ? 'Scanning…' : 'Connecting…') : 'Not connected'}
+          </Text>
+          <Text style={[styles.statusSub, { color: colors.sub }]} numberOfLines={1}>{statusMsg}</Text>
+        </View>
+        {rssi !== null && (
+          <Text style={[styles.rssiPill, { color: colors.sub }]}>{rssi} dBm</Text>
+        )}
+      </View>
 
       {lastItem?.kind === 'text' && (
         <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <Text style={[styles.cardLabel, { color: colors.sub }]}>Last text from PC</Text>
-          <Text style={[styles.cardText,  { color: colors.text }]}>{lastItem.content}</Text>
+          <Text style={[styles.cardLabel, { color: colors.sub }]}>LAST FROM PC</Text>
+          <Text style={[styles.cardText, { color: colors.text }]}>{lastItem.content}</Text>
         </View>
       )}
       {lastItem?.kind === 'image' && (
         <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <Text style={[styles.cardLabel, { color: colors.sub }]}>Image received from PC</Text>
+          <Text style={[styles.cardLabel, { color: colors.sub }]}>IMAGE FROM PC</Text>
           <Image source={{ uri: lastItem.uri }} style={styles.preview} resizeMode="contain" />
         </View>
       )}
       {lastItem?.kind === 'file' && (
         <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <Text style={[styles.cardLabel, { color: colors.sub }]}>File</Text>
-          <Text style={[styles.cardText,  { color: colors.text }]}>{lastItem.name}</Text>
+          <Text style={[styles.cardLabel, { color: colors.sub }]}>FILE</Text>
+          <Text style={[styles.cardText, { color: colors.text }]}>{lastItem.name}</Text>
         </View>
       )}
 
-      <View style={styles.buttons}>
-        <Pressable style={[styles.btn, busy && styles.btnDisabled]}
-          onPress={isConn ? () => { noAutoReconnect.current = true; deviceRef.current?.cancelConnection(); } : scan}
-          disabled={busy}>
-          {busy
-            ? <ActivityIndicator color="#fff" />
-            : <Text style={styles.btnText}>{isConn ? 'Disconnect' : 'Connect to PC'}</Text>}
-        </Pressable>
+      {/* Primary connect action */}
+      <Pressable style={[styles.btn, isConn ? styles.btnRed : styles.btnBlue, busy && styles.btnDisabled, { width: '100%', marginBottom: 12 }]}
+        onPress={isConn ? () => { noAutoReconnect.current = true; deviceRef.current?.cancelConnection(); } : scan}
+        disabled={busy}>
+        {busy
+          ? <ActivityIndicator color="#fff" />
+          : <Text style={styles.btnText}>{isConn ? 'Disconnect' : 'Connect to PC'}</Text>}
+      </Pressable>
 
-        {pairRequired && (
-          <View style={[styles.pairCard, { backgroundColor: colors.card }]}>
-            <Text style={[styles.pairTitle, { color: '#af52de' }]}>Pairing Required</Text>
-            <Text style={[styles.pairStep, { color: colors.text }]}>On your PC, click "Pair New Device" in the ClipDropper tray icon, then scan the QR code:</Text>
-            <Pressable style={[styles.btn, styles.btnPurple, { marginTop: 8 }]} onPress={openScanner}>
-              <Text style={styles.btnText}>Scan QR Code</Text>
-            </Pressable>
+      {/* Pair required banner */}
+      {pairRequired && (
+        <View style={[styles.pairCard, { backgroundColor: colors.card }]}>
+          <Text style={[styles.pairTitle, { color: '#af52de' }]}>Pairing Required</Text>
+          <Text style={[styles.pairStep, { color: colors.text }]}>On your PC click "Pair New Device" in the tray, then scan the QR:</Text>
+          <Pressable style={[styles.btn, styles.btnPurple, { marginTop: 10 }]} onPress={openScanner}>
+            <Text style={styles.btnText}>Scan QR Code</Text>
+          </Pressable>
+        </View>
+      )}
+
+      {/* Send to PC section */}
+      <Text style={[styles.sectionLabel, { color: colors.sub }]}>SEND TO PC</Text>
+      <View style={[styles.menuCard, { backgroundColor: colors.card }]}>
+        <Pressable style={[styles.menuRow, !isConn && styles.btnDisabled]} onPress={sendClipboard} disabled={!isConn}>
+          <View style={[styles.menuIcon, { backgroundColor: '#007aff' }]}>
+            <Text style={styles.menuIconText}>⌘</Text>
           </View>
-        )}
-
-        <Pressable style={[styles.btn, styles.btnPurple]} onPress={openScanner}>
-          <Text style={styles.btnText}>Scan QR to Pair</Text>
+          <Text style={[styles.menuLabel, { color: colors.text }]}>Clipboard</Text>
+          <Text style={[styles.menuChevron, { color: colors.sub }]}>›</Text>
         </Pressable>
-
-        <Pressable style={[styles.btn, styles.btnGreen,  !isConn && styles.btnDisabled]} onPress={sendClipboard}   disabled={!isConn}>
-          <Text style={styles.btnText}>Send Clipboard → PC</Text>
+        <View style={[styles.menuDivider, { backgroundColor: colors.rowBg }]} />
+        <Pressable style={[styles.menuRow, !isConn && styles.btnDisabled]} onPress={pickAndSendFile} disabled={!isConn}>
+          <View style={[styles.menuIcon, { backgroundColor: '#ff9500' }]}>
+            <Text style={styles.menuIconText}>⊞</Text>
+          </View>
+          <Text style={[styles.menuLabel, { color: colors.text }]}>File(s)</Text>
+          <Text style={[styles.menuChevron, { color: colors.sub }]}>›</Text>
         </Pressable>
-        <Pressable style={[styles.btn, styles.btnOrange, !isConn && styles.btnDisabled]} onPress={pickAndSendFile}  disabled={!isConn}>
-          <Text style={styles.btnText}>Pick File(s) → PC</Text>
-        </Pressable>
-        <Pressable style={[styles.btn, styles.btnTeal,   !isConn && styles.btnDisabled]} onPress={pickAndSendPhoto} disabled={!isConn}>
-          <Text style={styles.btnText}>Pick Photo → PC</Text>
+        <View style={[styles.menuDivider, { backgroundColor: colors.rowBg }]} />
+        <Pressable style={[styles.menuRow, !isConn && styles.btnDisabled]} onPress={pickAndSendPhoto} disabled={!isConn}>
+          <View style={[styles.menuIcon, { backgroundColor: '#32ade6' }]}>
+            <Text style={styles.menuIconText}>⊙</Text>
+          </View>
+          <Text style={[styles.menuLabel, { color: colors.text }]}>Photo</Text>
+          <Text style={[styles.menuChevron, { color: colors.sub }]}>›</Text>
         </Pressable>
       </View>
 
+      {/* Secondary: Scan QR to Pair */}
+      <Pressable style={[styles.btnOutline, { borderColor: isDark ? '#5e3a7a' : '#d4aaed', width: '100%', marginTop: 6 }]} onPress={openScanner}>
+        <Text style={[styles.btnOutlineText, { color: '#af52de' }]}>Scan QR to Pair</Text>
+      </Pressable>
+
       {history.length > 0 && (
         <View style={[styles.histCard, { backgroundColor: colors.card }]}>
-          <Text style={[styles.cardLabel, { color: colors.sub }]}>Recent (tap to copy / save)</Text>
+          <Text style={[styles.cardLabel, { color: colors.sub }]}>RECENT</Text>
           {history.map(item => (
             <HistRow key={item.id} item={item} colors={colors} />
           ))}
         </View>
       )}
 
-      <Text style={[styles.hint, { color: colors.sub }]}>Copy on PC to auto-receive · Buttons send from iPhone</Text>
+      <Text style={[styles.hint, { color: colors.sub }]}>Copy on PC to auto-receive · Use buttons to send</Text>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  root:             { flexGrow: 1, alignItems: 'center', paddingTop: 72, paddingHorizontal: 24, paddingBottom: 40 },
-  titleRow:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: 16 },
-  title:            { fontSize: 28, fontWeight: '700' },
-  themeChip:        { borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6 },
-  dot:              { width: 20, height: 20, borderRadius: 10, marginBottom: 12 },
-  statusMsg:        { fontSize: 15, textAlign: 'center', marginBottom: 24 },
-  card:             { borderRadius: 12, padding: 14, width: '100%', marginBottom: 20 },
-  cardLabel:        { fontSize: 12, marginBottom: 6 },
-  cardText:         { fontSize: 15 },
-  preview:          { width: '100%', height: 160, borderRadius: 8, backgroundColor: '#f0f0f0' },
-  buttons:          { width: '100%', gap: 12, marginBottom: 16 },
-  btn:              { backgroundColor: '#007aff', borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
-  btnGreen:         { backgroundColor: '#34c759' },
-  btnOrange:        { backgroundColor: '#ff9500' },
-  btnTeal:          { backgroundColor: '#32ade6' },
-  btnPurple:        { backgroundColor: '#af52de' },
-  btnDisabled:      { opacity: 0.4 },
-  btnText:          { color: '#fff', fontSize: 16, fontWeight: '600' },
-  histCard:         { borderRadius: 12, padding: 14, width: '100%', marginBottom: 16, gap: 6 },
-  histRow:          { borderRadius: 8, padding: 10, flexDirection: 'row', alignItems: 'center' },
-  histThumb:        { width: 40, height: 40, borderRadius: 6, marginRight: 10 },
-  histLabel:        { fontSize: 14, flex: 1 },
-  histHint:         { fontSize: 11, marginLeft: 8 },
-  hint:             { fontSize: 13, textAlign: 'center', marginTop: 8 },
-  overlay:          { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
-  onboardCard:      { borderRadius: 16, padding: 24, width: '100%' },
-  onboardTitle:     { fontSize: 22, fontWeight: '700', marginBottom: 20 },
-  onboardStep:      { fontSize: 16, marginBottom: 10 },
-  onboardSub:       { fontSize: 14, marginTop: 8 },
-  pairCard:         { borderRadius: 12, padding: 14, width: '100%', borderLeftWidth: 3, borderLeftColor: '#af52de' },
-  pairTitle:        { fontSize: 13, fontWeight: '700', marginBottom: 8 },
-  pairStep:         { fontSize: 14, marginBottom: 6, lineHeight: 20 },
-  scannerOverlay:   { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 32, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center' },
-  scannerHint:      { color: '#fff', fontSize: 15, textAlign: 'center', fontWeight: '500' },
+  // Layout
+  root:           { flexGrow: 1, alignItems: 'center', paddingTop: 60, paddingHorizontal: 20, paddingBottom: 48 },
+  titleRow:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: 16 },
+  title:          { fontSize: 30, fontWeight: '800', letterSpacing: -0.5 },
+  themeChip:      { borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6 },
+
+  // Status card
+  statusCard:     { flexDirection: 'row', alignItems: 'center', borderRadius: 14, padding: 16, width: '100%', marginBottom: 16, gap: 12 },
+  statusDotLg:    { width: 12, height: 12, borderRadius: 6, flexShrink: 0 },
+  statusMain:     { fontSize: 15, fontWeight: '600' },
+  statusSub:      { fontSize: 12, marginTop: 2 },
+  rssiPill:       { fontSize: 11, fontWeight: '500' },
+
+  // Content cards
+  card:           { borderRadius: 14, padding: 14, width: '100%', marginBottom: 16 },
+  cardLabel:      { fontSize: 10, fontWeight: '700', letterSpacing: 0.8, marginBottom: 8 },
+  cardText:       { fontSize: 15 },
+  preview:        { width: '100%', height: 160, borderRadius: 10, backgroundColor: '#f0f0f0' },
+
+  // Primary button
+  btn:            { borderRadius: 14, paddingVertical: 15, alignItems: 'center' },
+  btnBlue:        { backgroundColor: '#007aff' },
+  btnRed:         { backgroundColor: '#ff3b30' },
+  btnPurple:      { backgroundColor: '#af52de' },
+  btnDisabled:    { opacity: 0.35 },
+  btnText:        { color: '#fff', fontSize: 16, fontWeight: '600' },
+
+  // Outline button (secondary)
+  btnOutline:     { borderRadius: 14, paddingVertical: 13, alignItems: 'center', borderWidth: 1.5 },
+  btnOutlineText: { fontSize: 15, fontWeight: '600' },
+
+  // Section label
+  sectionLabel:   { fontSize: 10, fontWeight: '700', letterSpacing: 0.8, marginBottom: 8, marginTop: 20, alignSelf: 'flex-start' },
+
+  // Menu card (iOS-style grouped rows)
+  menuCard:       { borderRadius: 14, width: '100%', overflow: 'hidden' },
+  menuRow:        { flexDirection: 'row', alignItems: 'center', paddingVertical: 13, paddingHorizontal: 16, gap: 14 },
+  menuIcon:       { width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  menuIconText:   { color: '#fff', fontSize: 15 },
+  menuLabel:      { flex: 1, fontSize: 16 },
+  menuChevron:    { fontSize: 20, lineHeight: 22 },
+  menuDivider:    { height: 1, marginLeft: 60 },
+
+  // History
+  histCard:       { borderRadius: 14, padding: 14, width: '100%', marginBottom: 16, gap: 6, marginTop: 20 },
+  histRow:        { borderRadius: 10, padding: 10, flexDirection: 'row', alignItems: 'center' },
+  histThumb:      { width: 40, height: 40, borderRadius: 6, marginRight: 10 },
+  histLabel:      { fontSize: 14, flex: 1 },
+  histHint:       { fontSize: 11, marginLeft: 8 },
+  hint:           { fontSize: 13, textAlign: 'center', marginTop: 16 },
+
+  // Modals / overlays
+  overlay:        { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  onboardCard:    { borderRadius: 18, padding: 24, width: '100%' },
+  onboardTitle:   { fontSize: 22, fontWeight: '700', marginBottom: 20 },
+  onboardStep:    { fontSize: 16, marginBottom: 10 },
+  onboardSub:     { fontSize: 14, marginTop: 8 },
+  pairCard:       { borderRadius: 14, padding: 16, width: '100%', borderLeftWidth: 3, borderLeftColor: '#af52de', marginBottom: 12 },
+  pairTitle:      { fontSize: 13, fontWeight: '700', marginBottom: 6 },
+  pairStep:       { fontSize: 14, lineHeight: 20 },
+  scannerOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 32, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center' },
+  scannerHint:    { color: '#fff', fontSize: 15, textAlign: 'center', fontWeight: '500' },
 });

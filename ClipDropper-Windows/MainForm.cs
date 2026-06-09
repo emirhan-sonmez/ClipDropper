@@ -174,7 +174,7 @@ internal sealed class MainForm : Form
     {
         if (_http is null || _ble is null)
         {
-            Notify("ClipDropper", "Not connected to iPhone");
+            Notify("ClipDropper", "Not connected to device");
             return;
         }
         var bytes    = await File.ReadAllBytesAsync(filePath);
@@ -191,7 +191,7 @@ internal sealed class MainForm : Form
     {
         if (_http is null || _ble is null)
         {
-            Notify("ClipDropper", "Not connected to iPhone");
+            Notify("ClipDropper", "Not connected to device");
             return;
         }
         var folderName = Path.GetFileName(folderPath);
@@ -296,12 +296,15 @@ internal sealed class MainForm : Form
 
     // ── connection ────────────────────────────────────────────────────────
 
-    private void OnConnectionChanged(bool connected)
+    private string _connectedDeviceName = "device";
+
+    private void OnConnectionChanged(bool connected, string deviceName)
     {
         if (IsDisposed || !IsHandleCreated) return;
+        if (connected) _connectedDeviceName = deviceName;
         Invoke(() =>
         {
-            SetStatus(connected ? "Connected to iPhone" : "Advertising…");
+            SetStatus(connected ? $"Connected to {_connectedDeviceName}" : "Advertising…");
             var old = _trayIcon.Icon;
             _trayIcon.Icon = MakeIcon(connected);
             old?.Dispose();

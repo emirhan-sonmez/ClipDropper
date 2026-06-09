@@ -17,7 +17,7 @@ internal sealed class ManageDevicesForm : Form
 
         var titleLabel = new Label
         {
-            Text     = "Paired iPhone Devices",
+            Text     = "Paired Devices",
             Location = new Point(12, 12),
             Size     = new Size(376, 22),
             Font     = new Font(SystemFonts.DefaultFont.FontFamily, 10f, FontStyle.Bold),

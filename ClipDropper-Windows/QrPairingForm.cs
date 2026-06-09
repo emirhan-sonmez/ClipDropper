@@ -35,7 +35,7 @@ internal sealed class QrPairingForm : Form
 
         var instrLabel = new Label
         {
-            Text      = "Scan with ClipDropper on your iPhone",
+            Text      = "Scan with ClipDropper on your iPhone or iPad",
             Location  = new Point(10, 282),
             Size      = new Size(280, 20),
             TextAlign = ContentAlignment.MiddleCenter,

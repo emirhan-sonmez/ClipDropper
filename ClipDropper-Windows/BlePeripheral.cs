@@ -15,8 +15,10 @@ internal sealed class BlePeripheral : IDisposable
     private byte[] _httpEndpointBytes = [];
     private volatile bool _authorized;
 
-    public event Action<string>? TextReceived;
-    public event Action<bool>?   ConnectionChanged;
+    public event Action<string>?        TextReceived;
+    public event Action<bool, string>?  ConnectionChanged;
+
+    private string _connectedDeviceName = "device";
 
     public BlePeripheral(PairingManager pairing) => _pairing = pairing;
 
@@ -179,8 +181,9 @@ internal sealed class BlePeripheral : IDisposable
                 if (_pairing.IsKnownDevice(deviceId))
                 {
                     _authorized = true;
+                    _connectedDeviceName = deviceName;
                     await NotifyAsync(System.Text.Encoding.UTF8.GetBytes(GattProtocol.MsgWelcome));
-                    ConnectionChanged?.Invoke(true);
+                    ConnectionChanged?.Invoke(true, deviceName);
                 }
                 else
                 {
@@ -204,7 +207,7 @@ internal sealed class BlePeripheral : IDisposable
         {
             // Device disconnected — reset authorization and notify.
             _authorized = false;
-            ConnectionChanged?.Invoke(false);
+            ConnectionChanged?.Invoke(false, _connectedDeviceName);
         }
         // ConnectionChanged(true) is deferred until the HELLO/WELCOME exchange completes.
     }
