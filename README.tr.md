@@ -13,7 +13,7 @@ Bulut yok. Hesap yok. Kablo yok. Bir cihazda kopyala, diğerinde yapıştır.
 [![.NET](https://img.shields.io/badge/.NET-8.0-512bd4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/download/dotnet/8.0)
 [![Expo](https://img.shields.io/badge/iOS-Expo-000020?logo=expo&logoColor=white)](ClipDropper-iOS)
 
-[Windows _(yakında)_](#windows) · [iPhone'a Yükle](#ios) · [Kaynak Koddan Derle](#kaynak-koddan-derle) · [Nasıl Çalışır](#nasıl-çalışır)
+[Windows](#windows) · [iPhone'a Yükle](#ios) · [Kaynak Koddan Derle](#kaynak-koddan-derle) · [Nasıl Çalışır](#nasıl-çalışır)
 
 ---
 
@@ -77,7 +77,17 @@ ClipDropper, cihaz keşfi ve küçük veriler için **Bluetooth Low Energy (BLE)
 
 ### Windows
 
-> **Yakında** — Windows yükleyicisi [Releases](https://github.com/emirhan-sonmez/ClipDropper/releases) sayfasında yayınlanacak. Bu süreçte [kaynak koddan derleyebilirsin](#kaynak-koddan-derle).
+1. [Releases](https://github.com/emirhan-sonmez/ClipDropper/releases) sayfasına git ve `ClipDropper-Setup.exe`'yi indir
+2. Yükleyiciyi çalıştır — .NET 8 Desktop Runtime eksikse otomatik olarak algılanır ve yüklenir
+3. ClipDropper'ı Başlat Menüsünden veya masaüstü kısayolundan başlat
+
+**Alternatif: yükleyici olmadan çalıştır**
+
+Tek bağımlılık, ücretsiz [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)'dır (~200 MB, tek seferlik kurulum).
+
+1. [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)'yı yükle
+2. Bu repoyu indir veya klonla
+3. `ClipDropper-Windows\run.bat`'a çift tıkla — otomatik olarak derler ve başlatır
 
 ### iOS
 

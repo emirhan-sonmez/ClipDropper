@@ -13,7 +13,7 @@ Nessun cloud. Nessun account. Nessun cavo. Copia su un dispositivo e incolla sul
 [![.NET](https://img.shields.io/badge/.NET-8.0-512bd4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/download/dotnet/8.0)
 [![Expo](https://img.shields.io/badge/iOS-Expo-000020?logo=expo&logoColor=white)](ClipDropper-iOS)
 
-[Windows _(prossimamente)_](#windows) · [Installa su iPhone](#ios) · [Compila dal sorgente](#compila-dal-sorgente) · [Come funziona](#come-funziona)
+[Windows](#windows) · [Installa su iPhone](#ios) · [Compila dal sorgente](#compila-dal-sorgente) · [Come funziona](#come-funziona)
 
 ---
 
@@ -77,7 +77,17 @@ ClipDropper utilizza il **Bluetooth Low Energy (BLE)** per il rilevamento e i pa
 
 ### Windows
 
-> **Prossimamente** — il programma di installazione sarà disponibile nella pagina [Releases](https://github.com/emirhan-sonmez/ClipDropper/releases). Nel frattempo puoi [compilare dal sorgente](#compila-dal-sorgente).
+1. Vai alla pagina [Releases](https://github.com/emirhan-sonmez/ClipDropper/releases) e scarica `ClipDropper-Setup.exe`
+2. Esegui il programma di installazione — il Runtime Desktop di .NET 8 viene rilevato e installato automaticamente se mancante
+3. Avvia ClipDropper dal Menu Start o dal collegamento sul desktop
+
+**Alternativa: eseguire senza il programma di installazione**
+
+L'unica dipendenza è il gratuito [SDK di .NET 8](https://dotnet.microsoft.com/download/dotnet/8.0) (~200 MB, installazione una tantum).
+
+1. Installa l'[SDK di .NET 8](https://dotnet.microsoft.com/download/dotnet/8.0)
+2. Scarica o clona questo repository
+3. Fai doppio clic su `ClipDropper-Windows\run.bat` — compila e avvia automaticamente
 
 ### iOS
 

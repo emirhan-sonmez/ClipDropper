@@ -13,7 +13,7 @@ No cloud. No account. No cables. Just copy on one device and paste on the other.
 [![.NET](https://img.shields.io/badge/.NET-8.0-512bd4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/download/dotnet/8.0)
 [![Expo](https://img.shields.io/badge/iOS-Expo-000020?logo=expo&logoColor=white)](ClipDropper-iOS)
 
-[Windows _(coming soon)_](#windows) · [Install on iPhone](#ios) · [Build from Source](#build-from-source) · [How it Works](#how-it-works)
+[Windows](#windows) · [Install on iPhone](#ios) · [Build from Source](#build-from-source) · [How it Works](#how-it-works)
 
 ---
 
@@ -77,7 +77,9 @@ ClipDropper uses **Bluetooth Low Energy (BLE)** for discovery and small payloads
 
 ### Windows
 
-> **Coming soon** — the Windows installer will be available on the [Releases](https://github.com/emirhan-sonmez/ClipDropper/releases) page.
+1. Go to the [Releases](https://github.com/emirhan-sonmez/ClipDropper/releases) page and download `ClipDropper-Setup.exe`
+2. Run the installer — .NET 8 Desktop Runtime is detected and installed automatically if missing
+3. Launch ClipDropper from the Start Menu or desktop shortcut
 
 **Alternative: run without the installer**
 
@@ -86,13 +88,6 @@ The only dependency is the free [.NET 8 SDK](https://dotnet.microsoft.com/downlo
 1. Install the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
 2. Download or clone this repository
 3. Double-click `ClipDropper-Windows\run.bat` — it builds and launches automatically
-
-<!--
-Installer method (once released):
-1. Download `ClipDropper-Setup.exe` from the Releases page
-2. Run it — .NET 8 Desktop Runtime is detected and offered automatically
-3. Launch from the Start Menu or desktop shortcut
--->
 
 ### iOS
 

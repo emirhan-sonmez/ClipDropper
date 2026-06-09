@@ -13,7 +13,7 @@
 [![.NET](https://img.shields.io/badge/.NET-8.0-512bd4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/download/dotnet/8.0)
 [![Expo](https://img.shields.io/badge/iOS-Expo-000020?logo=expo&logoColor=white)](ClipDropper-iOS)
 
-[Windows _(即将推出)_](#windows) · [安装到 iPhone](#ios) · [从源码构建](#从源码构建) · [工作原理](#工作原理)
+[Windows](#windows) · [安装到 iPhone](#ios) · [从源码构建](#从源码构建) · [工作原理](#工作原理)
 
 ---
 
@@ -77,7 +77,17 @@ ClipDropper 使用**低功耗蓝牙 (BLE)** 进行设备发现和小数据传输
 
 ### Windows
 
-> **即将推出** — Windows 安装程序将在 [Releases](https://github.com/emirhan-sonmez/ClipDropper/releases) 页面发布。目前可以[从源码构建](#从源码构建)。
+1. 前往 [Releases](https://github.com/emirhan-sonmez/ClipDropper/releases) 页面下载 `ClipDropper-Setup.exe`
+2. 运行安装程序 — 如果缺少 .NET 8 桌面运行时，将自动检测并安装
+3. 从开始菜单或桌面快捷方式启动 ClipDropper
+
+**替代方式：无需安装程序直接运行**
+
+唯一的依赖是免费的 [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)（约 200 MB，一次性安装）。
+
+1. 安装 [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
+2. 下载或克隆本仓库
+3. 双击 `ClipDropper-Windows\run.bat` — 自动构建并启动
 
 ### iOS
 
