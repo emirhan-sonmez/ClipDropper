@@ -20,6 +20,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import * as Sharing from 'expo-sharing';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 
 const SERVICE_UUID   = '4fafc201-1fb5-459e-8fcc-c5c9c3319abc';
 const PC_TO_IOS_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
@@ -27,6 +28,7 @@ const IOS_TO_PC_UUID = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
 const PC_HTTP_UUID   = 'f3641f28-cb91-4353-9a5b-2f3459b33f8a';
 const MAX_FILE_MB    = 50;
 const HIST_MAX       = 5;
+const DEVICE_ID_FILE = '.deviceId';
 
 function base64ToUtf8(b64: string): string {
   const binary = atob(b64);
@@ -40,6 +42,25 @@ function utf8ToBase64(str: string): string {
   let binary = '';
   bytes.forEach(b => { binary += String.fromCharCode(b); });
   return btoa(binary);
+}
+
+function newUUID(): string {
+  const arr = new Uint8Array(16);
+  crypto.getRandomValues(arr);
+  return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function parseQrUrl(url: string): { host: string; port: string; ptoken: string } | null {
+  const q = url.indexOf('?');
+  if (q === -1) return null;
+  const params: Record<string, string> = {};
+  url.slice(q + 1).split('&').forEach(part => {
+    const eq = part.indexOf('=');
+    if (eq > 0) params[part.slice(0, eq)] = decodeURIComponent(part.slice(eq + 1));
+  });
+  const { host, port, ptoken } = params;
+  if (!host || !port || !ptoken) return null;
+  return { host, port, ptoken };
 }
 
 function dotColor(s: Status, rssi: number | null): string {
@@ -67,7 +88,6 @@ type LastItem  =
   | { kind: 'file';  name: string }
   | null;
 
-// Separate data type so pushItem's parameter is correctly typed as a discriminated union
 type HistItemData =
   | { kind: 'text';  label: string; value: string }
   | { kind: 'image'; label: string; uri: string }
@@ -80,7 +100,6 @@ const manager = new BleManager({
 });
 let _hid = 0;
 
-// Per-row animated component so each row owns its own flash animation
 function HistRow({ item, colors }: { item: HistItem; colors: ReturnType<typeof makeColors> }) {
   const flash  = useRef(new Animated.Value(0)).current;
   const canAct = item.kind === 'text' || item.kind === 'image' ||
@@ -133,19 +152,27 @@ function HistRow({ item, colors }: { item: HistItem; colors: ReturnType<typeof m
 export default function App() {
   const systemScheme = useColorScheme();
 
-  const [status,      setStatus]      = useState<Status>('idle');
-  const [statusMsg,   setMsg]         = useState('Tap Connect to find your PC');
-  const [lastItem,    setLastItem]    = useState<LastItem>(null);
-  const [rssi,        setRssi]        = useState<number | null>(null);
-  const [history,     setHistory]     = useState<HistItem[]>([]);
-  const [showOnboard, setShowOnboard] = useState(false);
-  const [themePref,   setThemePref]   = useState<ThemePref>('system');
+  const [status,        setStatus]        = useState<Status>('idle');
+  const [statusMsg,     setMsg]           = useState('Tap Connect to find your PC');
+  const [lastItem,      setLastItem]      = useState<LastItem>(null);
+  const [rssi,          setRssi]          = useState<number | null>(null);
+  const [history,       setHistory]       = useState<HistItem[]>([]);
+  const [showOnboard,   setShowOnboard]   = useState(false);
+  const [themePref,     setThemePref]     = useState<ThemePref>('system');
+  const [pairRequired,  setPairRequired]  = useState(false);
+  const [showQrScanner, setShowQrScanner] = useState(false);
 
-  const deviceRef   = useRef<Device | null>(null);
-  const httpRef     = useRef<{ ip: string; port: string; token: string } | null>(null);
-  const intentional = useRef(false);
-  const rssiTimer   = useRef<ReturnType<typeof setInterval> | null>(null);
-  const lastPcMsg   = useRef('');
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+
+  const deviceRef          = useRef<Device | null>(null);
+  const httpRef            = useRef<{ ip: string; port: string; token: string } | null>(null);
+  const intentional        = useRef(false);
+  const rssiTimer          = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastPcMsg          = useRef('');
+  const deviceUUIDRef      = useRef('');
+  const handshakeCompleted = useRef(false);
+  const gotPairRequired    = useRef(false);
+  const scannerActive      = useRef(false);
 
   const isDark = themePref === 'system' ? systemScheme === 'dark' : themePref === 'dark';
   const colors = makeColors(isDark);
@@ -153,6 +180,18 @@ export default function App() {
   function pushItem(item: HistItemData) {
     setHistory(prev => [{ ...item, id: ++_hid } as HistItem, ...prev].slice(0, HIST_MAX));
   }
+
+  // Load or generate persistent device UUID
+  useEffect(() => {
+    const path = (FileSystem.documentDirectory ?? '') + DEVICE_ID_FILE;
+    FileSystem.readAsStringAsync(path)
+      .then(id => { deviceUUIDRef.current = id; })
+      .catch(() => {
+        const id = newUUID();
+        deviceUUIDRef.current = id;
+        FileSystem.writeAsStringAsync(path, id).catch(() => {});
+      });
+  }, []);
 
   // Auto-scan when BLE powers on
   useEffect(() => {
@@ -215,7 +254,6 @@ export default function App() {
         binary += String.fromCharCode(...Array.from(bytes.subarray(i, i + CHUNK)));
       const b64  = btoa(binary);
       Clipboard.setImage(b64);
-      // Each image gets its own filename so multiple history thumbnails stay valid
       const dest = (FileSystem.cacheDirectory ?? '') + `clip_img_${Date.now()}.png`;
       FileSystem.writeAsStringAsync(dest, b64, { encoding: FileSystem.EncodingType.Base64 })
         .then(() => {
@@ -257,33 +295,31 @@ export default function App() {
     });
   }
 
+  function setupRssiPolling(conn: Device) {
+    conn.readRSSI().then(d => setRssi(d.rssi ?? null)).catch(() => {});
+    rssiTimer.current = setInterval(async () => {
+      try { setRssi((await conn.readRSSI()).rssi ?? null); }
+      catch { if (rssiTimer.current) { clearInterval(rssiTimer.current); rssiTimer.current = null; } }
+    }, 5000);
+  }
+
   async function connect(device: Device) {
     try {
       setStatus('connecting');
       setMsg(`Connecting to ${device.name ?? 'ClipDropper PC'}…`);
       const conn = await device.connect();
       await conn.discoverAllServicesAndCharacteristics();
-      deviceRef.current = conn;
-
-      try {
-        const hc = await conn.readCharacteristicForService(SERVICE_UUID, PC_HTTP_UUID);
-        if (hc.value) {
-          const p = base64ToUtf8(hc.value).split(':');
-          httpRef.current = { ip: p[0], port: p[1], token: p[2] };
-        }
-      } catch { /* older PC build without HTTP char */ }
-
-      conn.readRSSI().then(d => setRssi(d.rssi ?? null)).catch(() => {});
-      rssiTimer.current = setInterval(async () => {
-        try { setRssi((await conn.readRSSI()).rssi ?? null); }
-        catch { if (rssiTimer.current) { clearInterval(rssiTimer.current); rssiTimer.current = null; } }
-      }, 5000);
+      deviceRef.current          = conn;
+      handshakeCompleted.current = false;
+      gotPairRequired.current    = false;
 
       conn.onDisconnected(() => {
         if (rssiTimer.current) { clearInterval(rssiTimer.current); rssiTimer.current = null; }
         setRssi(null);
-        deviceRef.current = null;
-        httpRef.current   = null;
+        deviceRef.current       = null;
+        httpRef.current         = null;
+        gotPairRequired.current = false;
+        setPairRequired(false);
         if (intentional.current) {
           intentional.current = false;
           setStatus('idle');
@@ -297,6 +333,30 @@ export default function App() {
       conn.monitorCharacteristicForService(SERVICE_UUID, PC_TO_IOS_UUID, async (err, char) => {
         if (err || !char?.value) return;
         const msg = base64ToUtf8(char.value);
+
+        if (msg === 'WELCOME') {
+          handshakeCompleted.current = true;
+          gotPairRequired.current    = false;
+          setPairRequired(false);
+          try {
+            const hc = await conn.readCharacteristicForService(SERVICE_UUID, PC_HTTP_UUID);
+            if (hc.value) {
+              const p = base64ToUtf8(hc.value).split(':');
+              httpRef.current = { ip: p[0], port: p[1], token: p[2] };
+            }
+          } catch {}
+          setupRssiPolling(conn);
+          setStatus('connected');
+          setMsg(`Connected to ${device.name ?? 'ClipDropper PC'}${httpRef.current ? ' · HTTP ready' : ' · No HTTP (restart PC app)'}`);
+          return;
+        }
+
+        if (msg === 'PAIR_REQUIRED') {
+          gotPairRequired.current = true;
+          setPairRequired(true);
+          setMsg('Pairing required — click "Pair New Device" on your PC tray, then tap Scan QR here');
+          return;
+        }
 
         if (msg.startsWith('T:')) { applyPcMsg(msg).catch(() => {}); return; }
 
@@ -315,16 +375,86 @@ export default function App() {
             const dl = await FileSystem.downloadAsync(`http://${ip}:${port}/clip/file?token=${token}`, dest);
             if (dl.status !== 200) { Alert.alert('File from PC', `HTTP ${dl.status}`); return; }
             setLastItem({ kind: 'file', name: fn });
-            // Store localPath so the history row can re-open the share sheet if dismissed
             pushItem({ kind: 'file', label: `↓ ${fn}`, localPath: dest });
             if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(dest, { dialogTitle: `Save ${fn}` });
           } catch (e) { Alert.alert('File from PC', String(e)); }
         }
       });
 
-      setStatus('connected');
-      setMsg(`Connected to ${device.name ?? 'ClipDropper PC'}${httpRef.current ? ' · HTTP ready' : ' · No HTTP (restart PC app)'}`);
+      // Ensure UUID is ready before sending HELLO
+      if (!deviceUUIDRef.current) {
+        const id = newUUID();
+        deviceUUIDRef.current = id;
+        FileSystem.writeAsStringAsync(
+          (FileSystem.documentDirectory ?? '') + DEVICE_ID_FILE, id).catch(() => {});
+      }
+
+      await conn.writeCharacteristicWithResponseForService(
+        SERVICE_UUID, IOS_TO_PC_UUID,
+        utf8ToBase64(`HELLO:${deviceUUIDRef.current}:iPhone`));
+
+      // 5s fallback: old PC builds don't speak the pairing protocol — connect directly
+      setTimeout(async () => {
+        if (handshakeCompleted.current || gotPairRequired.current || !deviceRef.current) return;
+        try {
+          const hc = await conn.readCharacteristicForService(SERVICE_UUID, PC_HTTP_UUID);
+          if (hc.value) {
+            const p = base64ToUtf8(hc.value).split(':');
+            httpRef.current = { ip: p[0], port: p[1], token: p[2] };
+          }
+        } catch {}
+        setupRssiPolling(conn);
+        setStatus('connected');
+        setMsg(`Connected to ${device.name ?? 'ClipDropper PC'}${httpRef.current ? ' · HTTP ready' : ' · No HTTP (restart PC app)'}`);
+      }, 5000);
+
     } catch (e) { handleError(e as BleError); }
+  }
+
+  async function openQrScanner() {
+    if (!cameraPermission?.granted) {
+      const result = await requestCameraPermission();
+      if (!result.granted) {
+        Alert.alert('Camera required', 'Allow camera access in Settings to scan the pairing QR code.');
+        return;
+      }
+    }
+    scannerActive.current = true;
+    setShowQrScanner(true);
+  }
+
+  async function handleQrPair(host: string, port: string, ptoken: string) {
+    setShowQrScanner(false);
+    setMsg('Pairing with PC…');
+    const ac    = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 10000);
+    try {
+      const res = await fetch(`http://${host}:${port}/pair`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ deviceId: deviceUUIDRef.current, deviceName: 'iPhone', ptoken }),
+        signal:  ac.signal,
+      });
+      clearTimeout(timer);
+      if (res.ok) {
+        // Pair saved on Windows — re-send HELLO so Windows replies WELCOME
+        if (deviceRef.current) {
+          await deviceRef.current.writeCharacteristicWithResponseForService(
+            SERVICE_UUID, IOS_TO_PC_UUID,
+            utf8ToBase64(`HELLO:${deviceUUIDRef.current}:iPhone`));
+        }
+      } else {
+        const body = await res.text().catch(() => '');
+        Alert.alert('Pairing failed', body || `Server returned ${res.status}`);
+        setPairRequired(true);
+        setMsg('Pairing failed — try again');
+      }
+    } catch (e) {
+      clearTimeout(timer);
+      Alert.alert('Pairing failed', String(e));
+      setPairRequired(true);
+      setMsg('Pairing failed — try again');
+    }
   }
 
   async function sendClipboard() {
@@ -421,18 +551,50 @@ export default function App() {
       contentContainerStyle={[styles.root, { backgroundColor: colors.bg }]}
       keyboardShouldPersistTaps="handled">
 
+      {/* Onboarding */}
       <Modal visible={showOnboard} animationType="fade" transparent>
         <View style={styles.overlay}>
           <View style={[styles.onboardCard, { backgroundColor: colors.card }]}>
             <Text style={[styles.onboardTitle, { color: colors.text }]}>Welcome to ClipDropper</Text>
             <Text style={[styles.onboardStep,  { color: colors.text }]}>1. Run ClipDropper on your Windows PC</Text>
             <Text style={[styles.onboardStep,  { color: colors.text }]}>2. Make sure both devices are on the same WiFi</Text>
-            <Text style={[styles.onboardStep,  { color: colors.text }]}>3. Tap Connect — the app does the rest</Text>
+            <Text style={[styles.onboardStep,  { color: colors.text }]}>3. First time? Tap "Pair New Device" in the PC tray icon, then connect here and scan the QR code</Text>
             <Text style={[styles.onboardSub,   { color: colors.sub  }]}>Copy anything on your PC and it appears here automatically. Use the buttons to send from your iPhone to PC.</Text>
             <Pressable style={[styles.btn, { marginTop: 20 }]} onPress={dismissOnboard}>
               <Text style={styles.btnText}>Get Started</Text>
             </Pressable>
           </View>
+        </View>
+      </Modal>
+
+      {/* QR scanner modal */}
+      <Modal visible={showQrScanner} animationType="slide">
+        <View style={[styles.scannerContainer, { backgroundColor: colors.bg }]}>
+          <Text style={[styles.scannerTitle, { color: colors.text }]}>Scan PC QR Code</Text>
+          <Text style={[styles.scannerSub, { color: colors.sub }]}>Point your camera at the QR code shown on your PC</Text>
+          <CameraView
+            style={styles.camera}
+            facing="back"
+            barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
+            onBarcodeScanned={({ data }) => {
+              if (!scannerActive.current) return;
+              scannerActive.current = false;
+              const parsed = parseQrUrl(data);
+              if (!parsed) {
+                Alert.alert('Invalid QR', 'Not a ClipDropper pairing QR code.', [
+                  { text: 'Try again', onPress: () => { scannerActive.current = true; } },
+                  { text: 'Cancel',    onPress: () => setShowQrScanner(false) },
+                ]);
+                return;
+              }
+              handleQrPair(parsed.host, parsed.port, parsed.ptoken);
+            }}
+          />
+          <Pressable
+            style={[styles.btn, styles.btnCancel, { marginTop: 24 }]}
+            onPress={() => setShowQrScanner(false)}>
+            <Text style={styles.btnText}>Cancel</Text>
+          </Pressable>
         </View>
       </Modal>
 
@@ -475,6 +637,13 @@ export default function App() {
             ? <ActivityIndicator color="#fff" />
             : <Text style={styles.btnText}>{isConn ? 'Disconnect' : 'Connect to PC'}</Text>}
         </Pressable>
+
+        {pairRequired && (
+          <Pressable style={[styles.btn, styles.btnPurple]} onPress={openQrScanner}>
+            <Text style={styles.btnText}>Scan QR to Pair</Text>
+          </Pressable>
+        )}
+
         <Pressable style={[styles.btn, styles.btnGreen,  !isConn && styles.btnDisabled]} onPress={sendClipboard}   disabled={!isConn}>
           <Text style={styles.btnText}>Send Clipboard → PC</Text>
         </Pressable>
@@ -501,32 +670,38 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  root:         { flexGrow: 1, alignItems: 'center', paddingTop: 72, paddingHorizontal: 24, paddingBottom: 40 },
-  titleRow:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: 16 },
-  title:        { fontSize: 28, fontWeight: '700' },
-  themeChip:    { borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6 },
-  dot:          { width: 20, height: 20, borderRadius: 10, marginBottom: 12 },
-  statusMsg:    { fontSize: 15, textAlign: 'center', marginBottom: 24 },
-  card:         { borderRadius: 12, padding: 14, width: '100%', marginBottom: 20 },
-  cardLabel:    { fontSize: 12, marginBottom: 6 },
-  cardText:     { fontSize: 15 },
-  preview:      { width: '100%', height: 160, borderRadius: 8, backgroundColor: '#f0f0f0' },
-  buttons:      { width: '100%', gap: 12, marginBottom: 16 },
-  btn:          { backgroundColor: '#007aff', borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
-  btnGreen:     { backgroundColor: '#34c759' },
-  btnOrange:    { backgroundColor: '#ff9500' },
-  btnTeal:      { backgroundColor: '#32ade6' },
-  btnDisabled:  { opacity: 0.4 },
-  btnText:      { color: '#fff', fontSize: 16, fontWeight: '600' },
-  histCard:     { borderRadius: 12, padding: 14, width: '100%', marginBottom: 16, gap: 6 },
-  histRow:      { borderRadius: 8, padding: 10, flexDirection: 'row', alignItems: 'center' },
-  histThumb:    { width: 40, height: 40, borderRadius: 6, marginRight: 10 },
-  histLabel:    { fontSize: 14, flex: 1 },
-  histHint:     { fontSize: 11, marginLeft: 8 },
-  hint:         { fontSize: 13, textAlign: 'center', marginTop: 8 },
-  overlay:      { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
-  onboardCard:  { borderRadius: 16, padding: 24, width: '100%' },
-  onboardTitle: { fontSize: 22, fontWeight: '700', marginBottom: 20 },
-  onboardStep:  { fontSize: 16, marginBottom: 10 },
-  onboardSub:   { fontSize: 14, marginTop: 8 },
+  root:             { flexGrow: 1, alignItems: 'center', paddingTop: 72, paddingHorizontal: 24, paddingBottom: 40 },
+  titleRow:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: 16 },
+  title:            { fontSize: 28, fontWeight: '700' },
+  themeChip:        { borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6 },
+  dot:              { width: 20, height: 20, borderRadius: 10, marginBottom: 12 },
+  statusMsg:        { fontSize: 15, textAlign: 'center', marginBottom: 24 },
+  card:             { borderRadius: 12, padding: 14, width: '100%', marginBottom: 20 },
+  cardLabel:        { fontSize: 12, marginBottom: 6 },
+  cardText:         { fontSize: 15 },
+  preview:          { width: '100%', height: 160, borderRadius: 8, backgroundColor: '#f0f0f0' },
+  buttons:          { width: '100%', gap: 12, marginBottom: 16 },
+  btn:              { backgroundColor: '#007aff', borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
+  btnGreen:         { backgroundColor: '#34c759' },
+  btnOrange:        { backgroundColor: '#ff9500' },
+  btnTeal:          { backgroundColor: '#32ade6' },
+  btnPurple:        { backgroundColor: '#af52de' },
+  btnCancel:        { backgroundColor: '#636366', width: '80%', alignSelf: 'center' },
+  btnDisabled:      { opacity: 0.4 },
+  btnText:          { color: '#fff', fontSize: 16, fontWeight: '600' },
+  histCard:         { borderRadius: 12, padding: 14, width: '100%', marginBottom: 16, gap: 6 },
+  histRow:          { borderRadius: 8, padding: 10, flexDirection: 'row', alignItems: 'center' },
+  histThumb:        { width: 40, height: 40, borderRadius: 6, marginRight: 10 },
+  histLabel:        { fontSize: 14, flex: 1 },
+  histHint:         { fontSize: 11, marginLeft: 8 },
+  hint:             { fontSize: 13, textAlign: 'center', marginTop: 8 },
+  overlay:          { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  onboardCard:      { borderRadius: 16, padding: 24, width: '100%' },
+  onboardTitle:     { fontSize: 22, fontWeight: '700', marginBottom: 20 },
+  onboardStep:      { fontSize: 16, marginBottom: 10 },
+  onboardSub:       { fontSize: 14, marginTop: 8 },
+  scannerContainer: { flex: 1, alignItems: 'center', paddingTop: 80, paddingHorizontal: 24, paddingBottom: 40 },
+  scannerTitle:     { fontSize: 22, fontWeight: '700', marginBottom: 8 },
+  scannerSub:       { fontSize: 14, textAlign: 'center', marginBottom: 24 },
+  camera:           { width: '100%', aspectRatio: 1, borderRadius: 16, overflow: 'hidden' },
 });
