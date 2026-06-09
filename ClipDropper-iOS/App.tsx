@@ -15,7 +15,7 @@ import {
   Vibration,
   useColorScheme,
 } from 'react-native';
-import { BleManager, Device, BleError } from 'react-native-ble-plx';
+import { BleManager, Device, BleError, BleErrorCode } from 'react-native-ble-plx';
 import Clipboard from '@react-native-clipboard/clipboard';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as DocumentPicker from 'expo-document-picker';
@@ -169,7 +169,7 @@ export default function App() {
 
   const deviceRef          = useRef<Device | null>(null);
   const httpRef            = useRef<{ ip: string; port: string; token: string } | null>(null);
-  const intentional        = useRef(false);
+  const noAutoReconnect        = useRef(false);
   const rssiTimer          = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastPcMsg          = useRef('');
   const deviceUUIDRef      = useRef(newUUID()); // pre-filled so deep links never race
@@ -286,6 +286,7 @@ export default function App() {
   }
 
   function scan() {
+    noAutoReconnect.current = false;
     setStatus('scanning');
     setMsg('Scanning for ClipDropper PC…');
     const t = setTimeout(() => {
@@ -324,8 +325,7 @@ export default function App() {
         httpRef.current         = null;
         gotPairRequired.current = false;
         setPairRequired(false);
-        if (intentional.current) {
-          intentional.current = false;
+        if (noAutoReconnect.current) {
           setStatus('idle');
           setMsg('Disconnected. Tap Connect to reconnect.');
         } else {
@@ -526,9 +526,26 @@ export default function App() {
 
   async function pickAndSendPhoto() {
     if (!httpRef.current) { Alert.alert('Not connected', 'Connect to your PC first.'); return; }
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) { Alert.alert('Permission denied', 'Allow photo library access in Settings.'); return; }
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8 });
+    const source = await new Promise<'camera' | 'gallery' | null>(resolve =>
+      Alert.alert('Send Photo', 'Choose source', [
+        { text: 'Take Photo',        onPress: () => resolve('camera') },
+        { text: 'Choose from Gallery', onPress: () => resolve('gallery') },
+        { text: 'Cancel',            style: 'cancel', onPress: () => resolve(null) },
+      ])
+    );
+    if (!source) return;
+
+    let result: ImagePicker.ImagePickerResult;
+    if (source === 'camera') {
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (!perm.granted) { Alert.alert('Permission denied', 'Allow camera access in Settings.'); return; }
+      result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.8 });
+    } else {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) { Alert.alert('Permission denied', 'Allow photo library access in Settings.'); return; }
+      result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8 });
+    }
+
     if (result.canceled || !result.assets?.length) return;
     const asset = result.assets[0];
     try {
@@ -542,6 +559,12 @@ export default function App() {
   }
 
   function handleError(e: BleError | Error) {
+    const code = (e as BleError).errorCode;
+    if (code === BleErrorCode.OperationCancelled || code === BleErrorCode.BluetoothManagerDestroyed) {
+      setStatus('idle');
+      setMsg('Disconnected. Tap Connect to reconnect.');
+      return;
+    }
     setStatus('error');
     setMsg((e as BleError).message ?? String(e));
   }
@@ -652,7 +675,7 @@ export default function App() {
 
       <View style={styles.buttons}>
         <Pressable style={[styles.btn, busy && styles.btnDisabled]}
-          onPress={isConn ? () => { intentional.current = true; deviceRef.current?.cancelConnection(); } : scan}
+          onPress={isConn ? () => { noAutoReconnect.current = true; deviceRef.current?.cancelConnection(); } : scan}
           disabled={busy}>
           {busy
             ? <ActivityIndicator color="#fff" />
