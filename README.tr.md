@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="ClipDropper-Windows/ClipDropperIcon.png" width="140" alt="ClipDropper" />
+<img src="ClipDropper-Windows/ClipDropperIcon.png?v=2" width="140" alt="ClipDropper" />
 
 # ClipDropper
 
