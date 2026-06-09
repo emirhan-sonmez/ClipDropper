@@ -3,6 +3,7 @@
     "name": "ClipDropper",
     "slug": "clipdropper-ios",
     "version": "1.0.0",
+    "scheme": "clipdropper",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -16,9 +17,6 @@
       }
     },
     "plugins": [
-      ["expo-camera", {
-        "cameraPermission": "ClipDropper uses the camera to scan the pairing QR code shown on your PC."
-      }],
       ["expo-document-picker"],
       ["expo-image-picker", {
         "photosPermission": "ClipDropper can send your photos to your PC."

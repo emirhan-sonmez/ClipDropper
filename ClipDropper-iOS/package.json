@@ -12,8 +12,7 @@
     "expo-document-picker": "*",
     "expo-file-system": "*",
     "expo-image-picker": "*",
-    "expo-sharing": "*",
-    "expo-camera": "~16.1.6"
+    "expo-sharing": "*"
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
