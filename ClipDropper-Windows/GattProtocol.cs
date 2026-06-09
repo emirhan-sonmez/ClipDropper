@@ -13,4 +13,9 @@ internal static class GattProtocol
     public const string PfxText  = "T:";
     public const string PfxImage = "I:";
     public const string PfxFile  = "F:";
+
+    // Pairing handshake (iOS → Windows: PfxHello; Windows → iOS: MsgWelcome / MsgPairRequired)
+    public const string PfxHello        = "HELLO:";        // followed by {deviceId}:{deviceName}
+    public const string MsgWelcome      = "WELCOME";       // known device — proceed to normal mode
+    public const string MsgPairRequired = "PAIR_REQUIRED"; // unknown device — scan QR to pair
 }

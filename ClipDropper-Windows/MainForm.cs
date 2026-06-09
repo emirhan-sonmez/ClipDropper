@@ -14,11 +14,15 @@ internal sealed class MainForm : Form
     private readonly ToolStripMenuItem  _recentMenu;
     private readonly ToolStripMenuItem  _openLogItem;
     private readonly ToolStripMenuItem  _contextMenuToggleItem;
+    private readonly ToolStripMenuItem  _pairNewItem;
+    private readonly ToolStripMenuItem  _manageDevicesItem;
 
     // ── services ──────────────────────────────────────────────────────────
     private ClipboardMonitor? _clipboardMonitor;
     private BlePeripheral?    _ble;
     private HttpServer?       _http;
+    private PairingManager?   _pairing;
+    private QrPairingForm?    _qrForm;
 
     // ── state ─────────────────────────────────────────────────────────────
     private volatile bool _suppressNext;
@@ -55,10 +59,18 @@ internal sealed class MainForm : Form
                                  { Checked = SettingsStore.ContextMenu, CheckOnClick = true };
         _contextMenuToggleItem.Click += (_, _) => SettingsStore.ContextMenu = _contextMenuToggleItem.Checked;
 
+        _pairNewItem       = new ToolStripMenuItem("Pair New Device…");
+        _manageDevicesItem = new ToolStripMenuItem("Manage Paired Devices…");
+        _pairNewItem.Click       += (_, _) => ShowQrPairing();
+        _manageDevicesItem.Click += (_, _) => new ManageDevicesForm().Show();
+
         RefreshHistoryMenu();
 
         var menu = new ContextMenuStrip();
         menu.Items.Add(_statusItem);
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(_pairNewItem);
+        menu.Items.Add(_manageDevicesItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(_autoStartItem);
         menu.Items.Add(_notificationsItem);
@@ -87,14 +99,26 @@ internal sealed class MainForm : Form
         StartupHelper.EnsureSendToShortcut();
         StartupHelper.EnsureContextMenu(SettingsStore.ContextMenu);
 
-        _http = new HttpServer();
+        _pairing = new PairingManager();
+        _pairing.PairingSucceeded += name =>
+        {
+            if (!IsDisposed && IsHandleCreated)
+                Invoke(() => Notify("ClipDropper", $"Paired with {name}!"));
+        };
+        _pairing.PairingExpiredOrCancelled += () =>
+        {
+            if (!IsDisposed && IsHandleCreated)
+                Invoke(() => Notify("ClipDropper", "Pairing timed out."));
+        };
+
+        _http = new HttpServer(_pairing);
         _http.FileReceived += OnFileReceived;
 
         _clipboardMonitor = new ClipboardMonitor();
         _clipboardMonitor.TextCopied  += OnLocalText;
         _clipboardMonitor.ImageCopied += OnLocalImage;
 
-        _ble = new BlePeripheral();
+        _ble = new BlePeripheral(_pairing);
         _ble.SetHttpEndpoint(_http.Endpoint);
         _ble.TextReceived      += OnRemoteText;
         _ble.ConnectionChanged += OnConnectionChanged;
@@ -336,10 +360,22 @@ internal sealed class MainForm : Form
         return Icon.FromHandle(hicon);
     }
 
+    private void ShowQrPairing()
+    {
+        if (_pairing is null || _http is null) return;
+        _qrForm?.Close();
+        var (_, url) = _pairing.StartPairing(_http.Endpoint);
+        _qrForm = new QrPairingForm(_pairing, url);
+        _qrForm.FormClosed += (_, _) => _qrForm = null;
+        _qrForm.Show();
+    }
+
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
         _pipeCts.Cancel();
         _pipeCts.Dispose();
+        _qrForm?.Close();
+        _pairing?.Dispose();
         _trayIcon.Visible = false;
         _trayIcon.Dispose();
         _clipboardMonitor?.Dispose();

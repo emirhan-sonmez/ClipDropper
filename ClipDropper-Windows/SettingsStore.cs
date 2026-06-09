@@ -4,7 +4,8 @@ namespace ClipDropper;
 
 internal static class SettingsStore
 {
-    private const string Key = @"Software\ClipDropper";
+    private const string Key       = @"Software\ClipDropper";
+    private const string PairedKey = @"Software\ClipDropper\Paired";
 
     public static bool AutoStart
     {
@@ -31,6 +32,41 @@ internal static class SettingsStore
             Write("ContextMenu", value);
             StartupHelper.EnsureContextMenu(value);
         }
+    }
+
+    public static void SavePairedDevice(string deviceId, string deviceName)
+    {
+        try
+        {
+            using var k = Registry.CurrentUser.CreateSubKey(PairedKey);
+            k?.SetValue(deviceId, deviceName, RegistryValueKind.String);
+        }
+        catch { }
+    }
+
+    public static Dictionary<string, string> GetPairedDevices()
+    {
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        try
+        {
+            using var k = Registry.CurrentUser.OpenSubKey(PairedKey);
+            if (k is null) return result;
+            foreach (var name in k.GetValueNames())
+                if (k.GetValue(name) is string val)
+                    result[name] = val;
+        }
+        catch { }
+        return result;
+    }
+
+    public static void RevokeDevice(string deviceId)
+    {
+        try
+        {
+            using var k = Registry.CurrentUser.OpenSubKey(PairedKey, writable: true);
+            k?.DeleteValue(deviceId, throwOnMissingValue: false);
+        }
+        catch { }
     }
 
     private static bool Read(string name, bool defaultValue)

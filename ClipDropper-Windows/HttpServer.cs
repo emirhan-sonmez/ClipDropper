@@ -1,13 +1,15 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Text.Json;
 
 namespace ClipDropper;
 
 internal sealed class HttpServer : IDisposable
 {
-    private readonly TcpListener _listener;
-    private readonly string _token;
+    private readonly TcpListener    _listener;
+    private readonly string         _token;
+    private readonly PairingManager _pairing;
     private readonly CancellationTokenSource _cts = new();
     private volatile byte[]? _pendingImage;
     private volatile byte[]? _pendingFile;
@@ -16,9 +18,10 @@ internal sealed class HttpServer : IDisposable
     public event Action<byte[], string>? FileReceived;
     public string Endpoint { get; }
 
-    public HttpServer()
+    public HttpServer(PairingManager pairing)
     {
-        _token = Guid.NewGuid().ToString("N")[..8];
+        _pairing  = pairing;
+        _token    = Guid.NewGuid().ToString("N")[..8];
         _listener = new TcpListener(IPAddress.Any, 0);
         _listener.Start();
         var port = ((IPEndPoint)_listener.LocalEndpoint).Port;
@@ -77,6 +80,13 @@ internal sealed class HttpServer : IDisposable
         var path  = qIdx >= 0 ? fullPath[..qIdx] : fullPath;
         var query = ParseQuery(qIdx >= 0 ? fullPath[(qIdx + 1)..] : "");
 
+        // Pairing route — uses its own one-time token, not the session token.
+        if (method == "POST" && path == "/pair")
+        {
+            await HandlePairAsync(stream, lines, query);
+            return;
+        }
+
         if (!query.TryGetValue("token", out var tok) || tok != _token)
         {
             await RespondAsync(stream, 403, "text/plain", "Forbidden"u8.ToArray());
@@ -132,9 +142,63 @@ internal sealed class HttpServer : IDisposable
         await RespondAsync(stream, 404, "text/plain", "Not found"u8.ToArray());
     }
 
+    private async Task HandlePairAsync(NetworkStream stream, string[] lines, Dictionary<string, string> query)
+    {
+        if (!query.TryGetValue("ptoken", out var ptoken))
+        {
+            await RespondAsync(stream, 400, "application/json", "{\"error\":\"missing_ptoken\"}"u8.ToArray());
+            return;
+        }
+
+        var contentLength = 0;
+        foreach (var h in lines.Skip(1))
+        {
+            if (h.StartsWith("Content-Length:", StringComparison.OrdinalIgnoreCase))
+            {
+                int.TryParse(h.Split(':', 2)[1].Trim(), out contentLength);
+                break;
+            }
+        }
+
+        string deviceId = "", deviceName = "Unknown";
+        if (contentLength > 0 && contentLength <= 4096)
+        {
+            var body = new byte[contentLength];
+            await stream.ReadExactlyAsync(body);
+            try
+            {
+                using var doc = JsonDocument.Parse(body);
+                var root = doc.RootElement;
+                deviceId   = root.GetProperty("deviceId").GetString()   ?? "";
+                deviceName = root.GetProperty("deviceName").GetString() ?? "Unknown";
+            }
+            catch { }
+        }
+
+        if (string.IsNullOrEmpty(deviceId))
+        {
+            await RespondAsync(stream, 400, "application/json", "{\"error\":\"missing_device_id\"}"u8.ToArray());
+            return;
+        }
+
+        var result = _pairing.TryAccept(ptoken, deviceId, deviceName);
+        var (code, json) = result switch
+        {
+            PairResult.Ok           => (200, "{\"status\":\"ok\"}"),
+            PairResult.Expired      => (410, "{\"error\":\"expired\"}"),
+            PairResult.InvalidToken => (410, "{\"error\":\"invalid_token\"}"),
+            _                       => (400, "{\"error\":\"bad_request\"}")
+        };
+        await RespondAsync(stream, code, "application/json", Encoding.UTF8.GetBytes(json));
+    }
+
     private static async Task RespondAsync(NetworkStream s, int code, string ct, byte[] body)
     {
-        var status = code switch { 200 => "OK", 403 => "Forbidden", 404 => "Not Found", _ => "Error" };
+        var status = code switch
+        {
+            200 => "OK", 400 => "Bad Request", 403 => "Forbidden",
+            404 => "Not Found", 410 => "Gone", _ => "Error"
+        };
         var hdr = $"HTTP/1.1 {code} {status}\r\nContent-Type: {ct}\r\nContent-Length: {body.Length}\r\nConnection: close\r\n\r\n";
         await s.WriteAsync(Encoding.UTF8.GetBytes(hdr));
         await s.WriteAsync(body);

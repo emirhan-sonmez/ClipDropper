@@ -15,4 +15,7 @@
     <None Include="icon_48.ico" />
     <None Include="icon_256.ico" />
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="QRCoder" Version="1.6.0" />
+  </ItemGroup>
 </Project>
