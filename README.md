@@ -4,14 +4,14 @@
 
 # ClipDropper
 
-**Clipboard sync between Windows and iPhone — over Bluetooth.**
+**Clipboard sync between Windows and iPhone or iPad — over Bluetooth.**
 
 No cloud. No account. No cables. Just copy on one device and paste on the other.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Windows-10%2B-0078d4?logo=windows&logoColor=white)](https://github.com/emirhan-sonmez/ClipDropper/releases)
 [![.NET](https://img.shields.io/badge/.NET-8.0-512bd4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/download/dotnet/8.0)
-[![Expo](https://img.shields.io/badge/iOS-Expo-000020?logo=expo&logoColor=white)](ClipDropper-iOS)
+[![Expo](https://img.shields.io/badge/iOS%20%2F%20iPadOS-Expo-000020?logo=expo&logoColor=white)](ClipDropper-iOS)
 
 [Windows](#windows) · [Install on iPhone](#ios) · [Build from Source](#build-from-source) · [How it Works](#how-it-works)
 
@@ -25,7 +25,7 @@ No cloud. No account. No cables. Just copy on one device and paste on the other.
 
 ## Overview
 
-ClipDropper is a two-part app — a Windows system tray agent and an iPhone companion — that keeps your clipboard in sync over a local Bluetooth connection.
+ClipDropper is a two-part app — a Windows system tray agent and an iPhone or iPad companion — that keeps your clipboard in sync over a local Bluetooth connection.
 
 - Copy text or an image on your PC → instantly available to paste on your iPhone
 - Copy on iPhone → pastes on Windows
@@ -55,7 +55,7 @@ ClipDropper uses **Bluetooth Low Energy (BLE)** for discovery and small payloads
 
 ```
 ┌──────────────────────────┐                      ┌──────────────────────────┐
-│       Windows PC         │                      │       iPhone (iOS)       │
+│       Windows PC         │                      │    iPhone / iPad (iOS)   │
 │                          │                      │                          │
 │   ClipDropper.exe        │◄──── BLE GATT ──────►│   ClipDropper App        │
 │   (System Tray)          │   (text, commands)   │   (React Native)         │
@@ -89,9 +89,9 @@ The only dependency is the free [.NET 8 SDK](https://dotnet.microsoft.com/downlo
 2. Download or clone this repository
 3. Double-click `ClipDropper-Windows\run.bat` — it builds and launches automatically
 
-### iOS
+### iOS / iPadOS
 
-The iOS app is not on the App Store yet. You can install it for free on your own iPhone using **Sideloadly** — no developer account or jailbreak required.
+The app is not on the App Store yet. You can install it for free on your own iPhone or iPad using **Sideloadly** — no developer account or jailbreak required.
 
 > **Heads up:** Apps sideloaded with a free Apple ID expire after **7 days** and need to be re-signed. Sideloadly can do this automatically when your phone is connected.
 
@@ -102,8 +102,8 @@ The iOS app is not on the App Store yet. You can install it for free on your own
 
 #### Step 2 — Install on your iPhone
 
-1. Connect your iPhone to your PC via USB
-2. If prompted on your iPhone, tap **Trust This Computer**
+1. Connect your iPhone or iPad to your PC via USB
+2. If prompted on your device, tap **Trust This Computer**
 3. Open Sideloadly and drag `ClipDropper.ipa` into the window
 4. Enter your Apple ID and click **Start**
 5. Wait for the installation to complete
