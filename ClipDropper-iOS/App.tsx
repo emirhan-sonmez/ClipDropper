@@ -166,7 +166,7 @@ export default function App() {
   const intentional        = useRef(false);
   const rssiTimer          = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastPcMsg          = useRef('');
-  const deviceUUIDRef      = useRef('');
+  const deviceUUIDRef      = useRef(newUUID()); // pre-filled so deep links never race
   const handshakeCompleted = useRef(false);
   const gotPairRequired    = useRef(false);
 
@@ -183,9 +183,8 @@ export default function App() {
     FileSystem.readAsStringAsync(path)
       .then(id => { deviceUUIDRef.current = id; })
       .catch(() => {
-        const id = newUUID();
-        deviceUUIDRef.current = id;
-        FileSystem.writeAsStringAsync(path, id).catch(() => {});
+        // ref already has a UUID pre-filled at init; just persist it
+        FileSystem.writeAsStringAsync(path, deviceUUIDRef.current).catch(() => {});
       });
   }, []);
 
