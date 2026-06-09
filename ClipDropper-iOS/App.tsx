@@ -424,10 +424,10 @@ export default function App() {
     const ac    = new AbortController();
     const timer = setTimeout(() => ac.abort(), 10000);
     try {
-      const res = await fetch(`http://${host}:${port}/pair`, {
+      const res = await fetch(`http://${host}:${port}/pair?ptoken=${encodeURIComponent(ptoken)}`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ deviceId: deviceUUIDRef.current, deviceName: 'iPhone', ptoken }),
+        body:    JSON.stringify({ deviceId: deviceUUIDRef.current, deviceName: 'iPhone' }),
         signal:  ac.signal,
       });
       clearTimeout(timer);
