@@ -34,6 +34,23 @@ ClipDropper — это двухкомпонентное приложение: а
 
 ---
 
+## Скриншоты
+
+<div align="center">
+
+<img src="assets/demo.gif" width="320" alt="ClipDropper в действии — копируйте на ПК, вставляйте на iPad" />
+
+| | |
+|:---:|:---:|
+| <img src="assets/ios-home.png?v=2" width="300" alt="iOS-приложение, подключённое к ПК" /> | <img src="assets/ios-share-sheet.png?v=2" width="300" alt="Отправка на ПК из любого приложения" /> |
+| **Подключено и готово** | **Share Sheet — отправка из любого приложения** |
+| <img src="assets/windows-tray.png" width="300" alt="Меню в трее Windows" /> | <img src="assets/qr-pairing.png" width="300" alt="Сопряжение по QR-коду" /> |
+| **Трей Windows — всё в один клик** | **Сопряжение по QR за одно сканирование** |
+
+</div>
+
+---
+
 ## Возможности
 
 | | Функция | Подробности |

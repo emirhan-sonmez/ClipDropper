@@ -34,6 +34,23 @@ ClipDropper è un'applicazione in due parti — un agente nella barra delle appl
 
 ---
 
+## Screenshot
+
+<div align="center">
+
+<img src="assets/demo.gif" width="320" alt="ClipDropper in azione — copia sul PC, incolla sull'iPad" />
+
+| | |
+|:---:|:---:|
+| <img src="assets/ios-home.png?v=2" width="300" alt="App iOS connessa al PC" /> | <img src="assets/ios-share-sheet.png?v=2" width="300" alt="Invia al PC da qualsiasi app" /> |
+| **Connesso e pronto** | **Share Sheet — invia da qualsiasi app** |
+| <img src="assets/windows-tray.png" width="300" alt="Menu della tray di Windows" /> | <img src="assets/qr-pairing.png" width="300" alt="Abbinamento tramite QR" /> |
+| **Tray di Windows — tutto a portata di clic** | **Abbinamento QR con una scansione** |
+
+</div>
+
+---
+
 ## Funzionalità
 
 | | Funzionalità | Dettagli |

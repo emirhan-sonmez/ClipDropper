@@ -34,6 +34,23 @@ ClipDropper, iki parçadan oluşan bir uygulama — bir Windows sistem tepsisi a
 
 ---
 
+## Ekran Görüntüleri
+
+<div align="center">
+
+<img src="assets/demo.gif" width="320" alt="ClipDropper kullanımda — PC'de kopyala, iPad'de yapıştır" />
+
+| | |
+|:---:|:---:|
+| <img src="assets/ios-home.png?v=2" width="300" alt="PC'ye bağlı iOS uygulaması" /> | <img src="assets/ios-share-sheet.png?v=2" width="300" alt="Paylaşım menüsünden PC'ye gönderme" /> |
+| **Bağlı ve hazır** | **Paylaşım menüsü — her uygulamadan gönderin** |
+| <img src="assets/windows-tray.png" width="300" alt="Windows tepsi menüsü" /> | <img src="assets/qr-pairing.png" width="300" alt="QR ile eşleştirme" /> |
+| **Windows tepsisi — her şey tek tıkla** | **Tek taramayla QR eşleştirme** |
+
+</div>
+
+---
+
 ## Özellikler
 
 | | Özellik | Detaylar |

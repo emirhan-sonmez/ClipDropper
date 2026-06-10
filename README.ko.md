@@ -34,6 +34,23 @@ ClipDropper는 두 부분으로 구성된 앱입니다 — Windows 시스템 트
 
 ---
 
+## 스크린샷
+
+<div align="center">
+
+<img src="assets/demo.gif" width="320" alt="ClipDropper 사용 모습 — PC에서 복사, iPad에서 붙여넣기" />
+
+| | |
+|:---:|:---:|
+| <img src="assets/ios-home.png?v=2" width="300" alt="PC에 연결된 iOS 앱" /> | <img src="assets/ios-share-sheet.png?v=2" width="300" alt="공유 시트에서 PC로 전송" /> |
+| **연결 완료, 사용 준비됨** | **공유 시트 — 어떤 앱에서든 전송** |
+| <img src="assets/windows-tray.png" width="300" alt="Windows 트레이 메뉴" /> | <img src="assets/qr-pairing.png" width="300" alt="QR 페어링" /> |
+| **Windows 트레이 — 클릭 한 번으로** | **QR 스캔 한 번으로 페어링** |
+
+</div>
+
+---
+
 ## 기능
 
 | | 기능 | 상세 |
