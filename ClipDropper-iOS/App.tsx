@@ -366,7 +366,26 @@ export default function App() {
     try {
       setStatus('connecting');
       setMsg(`Connecting to ${device.name ?? 'ClipDropper PC'}…`);
-      const conn = await device.connect({ timeout: 10000 });
+      // Manual attempt-timeout. ble-plx's connect({timeout}) on iOS can tear
+      // down the link ~timeout ms after a SUCCESSFUL connect, so we time out
+      // the attempt ourselves and never touch an established connection.
+      let stillConnecting = true;
+      const connectTimer = setTimeout(() => {
+        if (stillConnecting) device.cancelConnection().catch(() => {});
+      }, 10000);
+      let conn: Device;
+      try {
+        conn = await device.connect();
+      } catch (e) {
+        if ((e as BleError).errorCode === BleErrorCode.DeviceAlreadyConnected) {
+          conn = device; // OS link already up (reused connection) — continue with it
+        } else {
+          throw e;
+        }
+      } finally {
+        stillConnecting = false;
+        clearTimeout(connectTimer);
+      }
       await conn.discoverAllServicesAndCharacteristics();
       deviceRef.current          = conn;
       handshakeCompleted.current = false;
