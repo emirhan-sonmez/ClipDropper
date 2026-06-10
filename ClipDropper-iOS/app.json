@@ -2,7 +2,7 @@
   "expo": {
     "name": "ClipDropper",
     "slug": "clipdropper-ios",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "scheme": "clipdropper",
     "orientation": "portrait",
     "icon": "./assets/icon.png",

@@ -30,7 +30,25 @@ ClipDropper is a two-part app — a Windows system tray agent and an iPhone or i
 - Copy text or an image on your PC → instantly available to paste on your iPhone
 - Copy on iPhone → pastes on Windows
 - Send any file or folder from Windows Explorer with a right-click
+- Share photos, files and links to your PC from any iOS app via the Share Sheet
 - Everything stays local — no internet connection, no third-party servers
+
+---
+
+## Screenshots
+
+<div align="center">
+
+<img src="assets/demo.gif" width="640" alt="ClipDropper in action — copy on PC, paste on iPad" />
+
+| | |
+|:---:|:---:|
+| <img src="assets/ios-home.png" width="300" alt="iOS app connected to PC" /> | <img src="assets/ios-share-sheet.png" width="300" alt="Send to PC from any app via the iOS Share Sheet" /> |
+| **Connected & ready** | **Share Sheet — send from any app** |
+| <img src="assets/windows-tray.png" width="300" alt="Windows tray menu" /> | <img src="assets/qr-pairing.png" width="300" alt="One-scan QR pairing" /> |
+| **Windows tray — everything one click away** | **One-scan QR pairing** |
+
+</div>
 
 ---
 
@@ -41,6 +59,9 @@ ClipDropper is a two-part app — a Windows system tray agent and an iPhone or i
 | **Clipboard** | Text sync | Copy on one device, paste on the other |
 | **Clipboard** | Image sync | Screenshots and copied images transfer seamlessly |
 | **Files** | File transfer | Right-click any file or folder → Send to ClipDropper |
+| **iOS** | Share Sheet | Send photos, files & links to your PC from any app |
+| **Windows** | Drop zone | Drag & drop files onto a floating mini-window to send |
+| **Security** | QR pairing | Devices must pair via a one-time QR code before any data flows |
 | **Windows** | System tray | Runs silently in the background |
 | **Windows** | Auto-start | Optionally launch with Windows |
 | **Windows** | Context menu | Explorer right-click integration |
