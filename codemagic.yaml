@@ -41,6 +41,47 @@ workflows:
             ONLY_ACTIVE_ARCH=NO \
             build \
             -derivedDataPath derived
+      - name: Ad-hoc sign with entitlements
+        # Sideloadly can only re-register App Groups (needed by the share
+        # extension) if the IPA's code signature carries the entitlements.
+        # Ad-hoc signing ("-") embeds them without needing any certificate.
+        script: |
+          set -e
+          APP=$(find derived -name "*.app" -path "*/Release-iphoneos/*" | head -1)
+          echo "App: $APP"
+          APP_ENT=$(find ClipDropper-iOS/ios -name "*.entitlements" -not -path "*ShareExtension*" | head -1)
+          EXT_ENT=$(find ClipDropper-iOS/ios -path "*ShareExtension*" -name "*.entitlements" | head -1)
+          echo "=== App entitlements: $APP_ENT ==="
+          [ -n "$APP_ENT" ] && cat "$APP_ENT"
+          echo "=== Extension entitlements: $EXT_ENT ==="
+          [ -n "$EXT_ENT" ] && cat "$EXT_ENT"
+          # Sign innermost first: frameworks, then the extension, then the app
+          if [ -d "$APP/Frameworks" ]; then
+            for f in "$APP/Frameworks"/*; do codesign --force --sign - "$f"; done
+          fi
+          APPEX=$(find "$APP/PlugIns" -name "*.appex" 2>/dev/null | head -1 || true)
+          if [ -n "$APPEX" ]; then
+            echo "Extension: $APPEX"
+            if [ -d "$APPEX/Frameworks" ]; then
+              for f in "$APPEX/Frameworks"/*; do codesign --force --sign - "$f"; done
+            fi
+            if [ -n "$EXT_ENT" ]; then
+              codesign --force --sign - --entitlements "$EXT_ENT" "$APPEX"
+            else
+              codesign --force --sign - "$APPEX"
+            fi
+          fi
+          if [ -n "$APP_ENT" ]; then
+            codesign --force --sign - --entitlements "$APP_ENT" "$APP"
+          else
+            codesign --force --sign - "$APP"
+          fi
+          echo "=== Verify embedded entitlements (app) ==="
+          codesign -d --entitlements - "$APP" || true
+          if [ -n "$APPEX" ]; then
+            echo "=== Verify embedded entitlements (extension) ==="
+            codesign -d --entitlements - "$APPEX" || true
+          fi
       - name: Package into IPA
         script: |
           set -e
