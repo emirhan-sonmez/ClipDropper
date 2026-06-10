@@ -16,6 +16,8 @@ internal sealed class MainForm : Form
     private readonly ToolStripMenuItem  _contextMenuToggleItem;
     private readonly ToolStripMenuItem  _pairNewItem;
     private readonly ToolStripMenuItem  _manageDevicesItem;
+    private readonly ToolStripMenuItem  _dropZoneItem;
+    private DropZoneForm?               _dropZone;
 
     // ── services ──────────────────────────────────────────────────────────
     private ClipboardMonitor? _clipboardMonitor;
@@ -26,6 +28,7 @@ internal sealed class MainForm : Form
 
     // ── state ─────────────────────────────────────────────────────────────
     private volatile bool _suppressNext;
+    private bool          _shuttingDown;
     private readonly CancellationTokenSource _pipeCts = new();
     private readonly Queue<(string label, string? rawText)> _history = new();
     private const int HistoryMax = 3;
@@ -59,6 +62,14 @@ internal sealed class MainForm : Form
                                  { Checked = SettingsStore.ContextMenu, CheckOnClick = true };
         _contextMenuToggleItem.Click += (_, _) => SettingsStore.ContextMenu = _contextMenuToggleItem.Checked;
 
+        _dropZoneItem = new ToolStripMenuItem("Show drop zone")
+                        { Checked = SettingsStore.DropZone, CheckOnClick = true };
+        _dropZoneItem.Click += (_, _) =>
+        {
+            SettingsStore.DropZone = _dropZoneItem.Checked;
+            UpdateDropZone();
+        };
+
         _pairNewItem       = new ToolStripMenuItem("Pair New Device…");
         _manageDevicesItem = new ToolStripMenuItem("Manage Paired Devices…");
         _pairNewItem.Click       += (_, _) => ShowQrPairing();
@@ -75,6 +86,7 @@ internal sealed class MainForm : Form
         menu.Items.Add(_autoStartItem);
         menu.Items.Add(_notificationsItem);
         menu.Items.Add(_contextMenuToggleItem);
+        menu.Items.Add(_dropZoneItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(_recentMenu);
         menu.Items.Add(_openLogItem);
@@ -88,6 +100,7 @@ internal sealed class MainForm : Form
             Icon             = MakeIcon(false),
             Visible          = true,
         };
+        _trayIcon.BalloonTipClicked += OnBalloonClicked;
     }
 
     protected override async void OnLoad(EventArgs e)
@@ -127,6 +140,8 @@ internal sealed class MainForm : Form
         _ = Task.Run(() => RunPipeServerAsync(_pipeCts.Token));
 
         Microsoft.Win32.SystemEvents.PowerModeChanged += OnPowerModeChanged;
+
+        if (SettingsStore.DropZone) UpdateDropZone();
 
         try
         {
@@ -279,7 +294,7 @@ internal sealed class MainForm : Form
         if (!IsDisposed && IsHandleCreated)
             Invoke(() =>
             {
-                Notify("ClipDropper", $"✓ {filename} saved");
+                Notify("ClipDropper", $"✓ {filename} saved — click to open", dest);
                 AddHistory($"↓ {filename}", null);
                 TransferLog.Write("←", filename);
             });
@@ -316,10 +331,25 @@ internal sealed class MainForm : Form
 
     // ── notification helper ───────────────────────────────────────────────
 
-    private void Notify(string title, string text)
+    private string? _lastNotifiedFile;
+
+    private void Notify(string title, string text, string? filePath = null)
     {
+        _lastNotifiedFile = filePath;
         if (!SettingsStore.Notifications) return;
         _trayIcon.ShowBalloonTip(1500, title, text, ToolTipIcon.None);
+    }
+
+    private void OnBalloonClicked(object? sender, EventArgs e)
+    {
+        var p = _lastNotifiedFile;
+        if (p is null || !File.Exists(p)) return;
+        try
+        {
+            System.Diagnostics.Process.Start(
+                new System.Diagnostics.ProcessStartInfo("explorer.exe", $"/select,\"{p}\""));
+        }
+        catch { }
     }
 
     // ── connection ────────────────────────────────────────────────────────
@@ -391,6 +421,29 @@ internal sealed class MainForm : Form
         return Icon.FromHandle(hicon);
     }
 
+    private void UpdateDropZone()
+    {
+        if (_dropZoneItem.Checked)
+        {
+            if (_dropZone is null || _dropZone.IsDisposed)
+            {
+                _dropZone = new DropZoneForm(SendLocalFileToiOSAsync, SendLocalFolderToiOSAsync);
+                _dropZone.FormClosed += (_, _) =>
+                {
+                    _dropZone = null;
+                    if (_shuttingDown) return; // app exit — keep the saved preference
+                    _dropZoneItem.Checked  = false;
+                    SettingsStore.DropZone = false;
+                };
+            }
+            _dropZone.Show();
+        }
+        else
+        {
+            _dropZone?.Close();
+        }
+    }
+
     private void ShowQrPairing()
     {
         if (_pairing is null || _http is null) return;
@@ -403,7 +456,9 @@ internal sealed class MainForm : Form
 
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
+        _shuttingDown = true;
         Microsoft.Win32.SystemEvents.PowerModeChanged -= OnPowerModeChanged;
+        _dropZone?.Close();
         _pipeCts.Cancel();
         _pipeCts.Dispose();
         _qrForm?.Close();

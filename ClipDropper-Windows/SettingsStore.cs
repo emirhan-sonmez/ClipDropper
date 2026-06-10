@@ -24,6 +24,12 @@ internal static class SettingsStore
         set => Write("Notifications", value);
     }
 
+    public static bool DropZone
+    {
+        get => Read("DropZone", defaultValue: false);
+        set => Write("DropZone", value);
+    }
+
     public static bool ContextMenu
     {
         get => Read("ContextMenu", defaultValue: true);
