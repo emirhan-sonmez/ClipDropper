@@ -17,6 +17,15 @@
       }
     },
     "plugins": [
+      ["expo-share-intent", {
+        "iosActivationRules": {
+          "NSExtensionActivationSupportsText": true,
+          "NSExtensionActivationSupportsWebURLWithMaxCount": 1,
+          "NSExtensionActivationSupportsImageWithMaxCount": 10,
+          "NSExtensionActivationSupportsMovieWithMaxCount": 5,
+          "NSExtensionActivationSupportsFileWithMaxCount": 10
+        }
+      }],
       ["expo-camera", {
         "cameraPermission": "Allow ClipDropper to scan QR codes for pairing."
       }],

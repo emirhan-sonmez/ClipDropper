@@ -13,7 +13,10 @@
     "expo-file-system": "*",
     "expo-image-picker": "*",
     "expo-sharing": "*",
-    "expo-camera": "~56.0.0"
+    "expo-camera": "~56.0.0",
+    "expo-constants": "~56.0.10",
+    "expo-linking": "~56.0.13",
+    "expo-share-intent": "^7.0.0"
   },
   "devDependencies": {
     "@types/react": "~19.2.2",

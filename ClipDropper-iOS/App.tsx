@@ -23,6 +23,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import * as Sharing from 'expo-sharing';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import { useShareIntent, ShareIntent } from 'expo-share-intent';
 
 const SERVICE_UUID   = '4fafc201-1fb5-459e-8fcc-c5c9c3319abc';
 const PC_TO_IOS_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
@@ -70,6 +71,10 @@ function parseQrUrl(url: string): { host: string; port: string; ptoken: string }
   return { host, port, ptoken };
 }
 
+function isUrl(s: string): boolean {
+  return /^https?:\/\/\S+$/i.test(s.trim());
+}
+
 function dotColor(s: Status, rssi: number | null): string {
   if (s !== 'connected') return '#8e8e93';
   if (rssi === null || rssi >= -70) return '#34c759';
@@ -113,7 +118,9 @@ function HistRow({ item, colors }: { item: HistItem; colors: ReturnType<typeof m
   const flash  = useRef(new Animated.Value(0)).current;
   const canAct = item.kind === 'text' || item.kind === 'image' ||
                  (item.kind === 'file' && !!item.localPath);
-  const hint   = item.kind === 'file' ? 'tap to save' : 'tap to copy';
+  const hint   = item.kind === 'file' ? 'tap to save'
+               : item.kind === 'text' && isUrl(item.value) ? 'tap to open'
+               : 'tap to copy';
 
   async function handlePress() {
     Vibration.vibrate(50);
@@ -124,6 +131,7 @@ function HistRow({ item, colors }: { item: HistItem; colors: ReturnType<typeof m
 
     if (item.kind === 'text') {
       Clipboard.setString(item.value);
+      if (isUrl(item.value)) Linking.openURL(item.value.trim()).catch(() => {});
     } else if (item.kind === 'image') {
       try {
         const path = item.uri.split('?')[0];
@@ -182,6 +190,8 @@ export default function App() {
   const qrScannedRef       = useRef(false);
 
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+  const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntent();
+  const pendingShare = useRef<ShareIntent | null>(null);
 
   const isDark = themePref === 'system' ? systemScheme === 'dark' : themePref === 'dark';
   const colors = makeColors(isDark);
@@ -244,7 +254,7 @@ export default function App() {
       const text  = msg.slice(2);
       const label = `↓ "${text.length > 40 ? text.slice(0, 40) + '…' : text}"`;
       Clipboard.setString(text);
-      setLastItem({ kind: 'text', content: text.length > 40 ? text.slice(0, 40) + '…' : text });
+      setLastItem({ kind: 'text', content: text });
       pushItem({ kind: 'text', label, value: text });
       lastPcMsg.current = msg;
       return;
@@ -258,7 +268,7 @@ export default function App() {
       const text    = await res.text();
       const preview = text.length > 40 ? text.slice(0, 40) + '…' : text;
       Clipboard.setString(text);
-      setLastItem({ kind: 'text', content: preview });
+      setLastItem({ kind: 'text', content: text });
       pushItem({ kind: 'text', label: `↓ "${preview}"`, value: text });
       lastPcMsg.current = msg;
       return;
@@ -468,6 +478,50 @@ export default function App() {
     return () => sub.remove();
   }, []);
 
+  // Content shared from other apps via the iOS Share Sheet. The app may be
+  // cold-launched by the share, so queue the intent and send once connected.
+  useEffect(() => {
+    if (!hasShareIntent) return;
+    pendingShare.current = shareIntent;
+    resetShareIntent();
+    if (status === 'connected') {
+      processPendingShare();
+    } else {
+      setMsg('Will send shared content once connected…');
+      if (status === 'idle' || status === 'error') scan();
+    }
+  }, [hasShareIntent]);
+
+  useEffect(() => {
+    if (status === 'connected' && pendingShare.current) processPendingShare();
+  }, [status]);
+
+  async function processPendingShare() {
+    const intent = pendingShare.current;
+    if (!intent) return;
+    pendingShare.current = null;
+    try {
+      if (intent.files?.length) {
+        const multi = intent.files.length > 1;
+        let sent = 0;
+        for (const f of intent.files) {
+          const uri  = f.path.startsWith('file://') ? f.path : 'file://' + f.path;
+          const name = f.fileName ?? uri.split('/').pop() ?? 'shared_file';
+          if (await uploadFile(uri, name, multi)) { pushItem({ kind: 'file', label: `↑ ${name}` }); sent++; }
+        }
+        if (multi) Alert.alert('Done', `${sent} item${sent === 1 ? '' : 's'} sent to PC.`);
+      } else {
+        const text = intent.webUrl ?? intent.text;
+        if (!text) return;
+        if (await sendTextToPc(text)) {
+          const preview = text.length > 40 ? text.slice(0, 40) + '…' : text;
+          pushItem({ kind: 'text', label: `↑ "${preview}"`, value: text });
+          Alert.alert('Sent!', 'Shared content sent to PC clipboard.');
+        }
+      }
+    } catch (e) { Alert.alert('Share failed', String(e)); }
+  }
+
   async function handleQrPair(host: string, port: string, ptoken: string) {
     setPairRequired(false);
     setMsg('Pairing with PC…');
@@ -506,6 +560,25 @@ export default function App() {
     }
   }
 
+  // Sends text via BLE when it fits in one packet, otherwise over HTTP
+  async function sendTextToPc(text: string): Promise<boolean> {
+    if (new TextEncoder().encode('T:' + text).length > MAX_BLE_BYTES) {
+      if (!httpRef.current) { Alert.alert('Text too long', 'HTTP not ready for long text. Restart PC app, reconnect, try again.'); return false; }
+      const { ip, port, token } = httpRef.current;
+      const res = await fetch(`http://${ip}:${port}/clip/text?token=${token}`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+        body:    text,
+      });
+      if (!res.ok) { Alert.alert('Send failed', `Server returned ${res.status}`); return false; }
+      return true;
+    }
+    if (!deviceRef.current) { Alert.alert('Not connected', 'Connect to your PC first.'); return false; }
+    await deviceRef.current.writeCharacteristicWithResponseForService(
+      SERVICE_UUID, IOS_TO_PC_UUID, utf8ToBase64('T:' + text));
+    return true;
+  }
+
   async function sendClipboard() {
     if (!deviceRef.current) { Alert.alert('Not connected', 'Connect to your PC first.'); return; }
     try {
@@ -523,20 +596,7 @@ export default function App() {
       }
       const text = await Clipboard.getString();
       if (!text) { Alert.alert('Empty clipboard', 'Nothing to send.'); return; }
-      if (new TextEncoder().encode('T:' + text).length > MAX_BLE_BYTES) {
-        // Too big for one BLE packet — POST to the PC's HTTP server instead
-        if (!httpRef.current) { Alert.alert('Text too long', 'HTTP not ready for long text. Restart PC app, reconnect, try again.'); return; }
-        const { ip, port, token } = httpRef.current;
-        const res = await fetch(`http://${ip}:${port}/clip/text?token=${token}`, {
-          method:  'POST',
-          headers: { 'Content-Type': 'text/plain; charset=utf-8' },
-          body:    text,
-        });
-        if (!res.ok) { Alert.alert('Send failed', `Server returned ${res.status}`); return; }
-      } else {
-        await deviceRef.current.writeCharacteristicWithResponseForService(
-          SERVICE_UUID, IOS_TO_PC_UUID, utf8ToBase64('T:' + text));
-      }
+      if (!(await sendTextToPc(text))) return;
       const preview = text.length > 40 ? text.slice(0, 40) + '…' : text;
       pushItem({ kind: 'text', label: `↑ "${preview}"`, value: text });
     } catch (e) { handleError(e as BleError); }
@@ -556,7 +616,7 @@ export default function App() {
         if (!go) continue;
       }
       try {
-        if (await uploadFile(file.uri, file.name)) { pushItem({ kind: 'file', label: `↑ ${file.name}` }); sent++; }
+        if (await uploadFile(file.uri, file.name, result.assets.length > 1)) { pushItem({ kind: 'file', label: `↑ ${file.name}` }); sent++; }
       } catch (e) { Alert.alert('Upload failed', `${file.name}: ${String(e)}`); }
     }
     if (sent > 1) Alert.alert('Done', `${sent} files sent to PC.`);
@@ -564,7 +624,7 @@ export default function App() {
 
   // Streams the file straight from disk — no base64/byte-array round-trip
   // through JS memory, so large files upload fast without memory spikes
-  async function uploadFile(uri: string, filename: string): Promise<boolean> {
+  async function uploadFile(uri: string, filename: string, quiet = false): Promise<boolean> {
     const http = httpRef.current;
     if (!http) { Alert.alert('Not connected', 'Connect to your PC first.'); return false; }
     const url = `http://${http.ip}:${http.port}/clip/upload?token=${http.token}&name=${encodeURIComponent(filename)}`;
@@ -576,7 +636,7 @@ export default function App() {
       });
       if (res.status === 200) {
         setLastItem({ kind: 'file', name: filename });
-        Alert.alert('Sent!', `${filename} saved to your PC's Downloads folder.`);
+        if (!quiet) Alert.alert('Sent!', `${filename} saved to your PC's Downloads folder.`);
         return true;
       }
       Alert.alert('Upload failed', `Server returned ${res.status}`);
@@ -603,15 +663,22 @@ export default function App() {
     } else {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!perm.granted) { Alert.alert('Permission denied', 'Allow photo library access in Settings.'); return; }
-      result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8 });
+      result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'], quality: 0.8,
+        allowsMultipleSelection: true, selectionLimit: 20,
+      });
     }
 
     if (result.canceled || !result.assets?.length) return;
-    const asset = result.assets[0];
-    try {
-      const name = asset.fileName ?? 'photo.jpg';
-      if (await uploadFile(asset.uri, name)) pushItem({ kind: 'file', label: `↑ ${name}` });
-    } catch (e) { Alert.alert('Failed', String(e)); }
+    const multi = result.assets.length > 1;
+    let sent = 0;
+    for (const asset of result.assets) {
+      try {
+        const name = asset.fileName ?? `photo_${Date.now()}.jpg`;
+        if (await uploadFile(asset.uri, name, multi)) { pushItem({ kind: 'file', label: `↑ ${name}` }); sent++; }
+      } catch (e) { Alert.alert('Failed', `${asset.fileName ?? 'photo'}: ${String(e)}`); }
+    }
+    if (multi) Alert.alert('Done', `${sent} photo${sent === 1 ? '' : 's'} sent to PC.`);
   }
 
   function handleError(e: BleError | Error) {
@@ -729,7 +796,12 @@ export default function App() {
       {lastItem?.kind === 'text' && (
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           <Text style={[styles.cardLabel, { color: colors.sub }]}>LAST FROM PC</Text>
-          <Text style={[styles.cardText, { color: colors.text }]}>{lastItem.content}</Text>
+          <Text style={[styles.cardText, { color: colors.text }]} numberOfLines={3}>{lastItem.content}</Text>
+          {isUrl(lastItem.content) && (
+            <Pressable onPress={() => Linking.openURL(lastItem.content.trim()).catch(() => {})}>
+              <Text style={styles.openLink}>Open Link</Text>
+            </Pressable>
+          )}
         </View>
       )}
       {lastItem?.kind === 'image' && (
@@ -800,7 +872,12 @@ export default function App() {
 
       {history.length > 0 && (
         <View style={[styles.histCard, { backgroundColor: colors.card }]}>
-          <Text style={[styles.cardLabel, { color: colors.sub }]}>RECENT</Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={[styles.cardLabel, { color: colors.sub }]}>RECENT</Text>
+            <Pressable onPress={() => setHistory([])} hitSlop={8}>
+              <Text style={[styles.cardLabel, { color: '#007aff' }]}>CLEAR</Text>
+            </Pressable>
+          </View>
           {history.map(item => (
             <HistRow key={item.id} item={item} colors={colors} />
           ))}
@@ -830,6 +907,7 @@ const styles = StyleSheet.create({
   card:           { borderRadius: 14, padding: 14, width: '100%', marginBottom: 16 },
   cardLabel:      { fontSize: 10, fontWeight: '700', letterSpacing: 0.8, marginBottom: 8 },
   cardText:       { fontSize: 15 },
+  openLink:       { color: '#007aff', fontSize: 14, fontWeight: '600', marginTop: 8 },
   preview:        { width: '100%', height: 160, borderRadius: 10, backgroundColor: '#f0f0f0' },
 
   // Primary button
