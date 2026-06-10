@@ -39,11 +39,11 @@ ClipDropper is a two-part app — a Windows system tray agent and an iPhone or i
 
 <div align="center">
 
-<img src="assets/demo.gif" width="640" alt="ClipDropper in action — copy on PC, paste on iPad" />
+<img src="assets/demo.gif" width="320" alt="ClipDropper in action — copy on PC, paste on iPad" />
 
 | | |
 |:---:|:---:|
-| <img src="assets/ios-home.png" width="300" alt="iOS app connected to PC" /> | <img src="assets/ios-share-sheet.png" width="300" alt="Send to PC from any app via the iOS Share Sheet" /> |
+| <img src="assets/ios-home.png?v=2" width="300" alt="iOS app connected to PC" /> | <img src="assets/ios-share-sheet.png?v=2" width="300" alt="Send to PC from any app via the iOS Share Sheet" /> |
 | **Connected & ready** | **Share Sheet — send from any app** |
 | <img src="assets/windows-tray.png" width="300" alt="Windows tray menu" /> | <img src="assets/qr-pairing.png" width="300" alt="One-scan QR pairing" /> |
 | **Windows tray — everything one click away** | **One-scan QR pairing** |
