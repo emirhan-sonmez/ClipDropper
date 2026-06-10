@@ -129,76 +129,93 @@ internal sealed class BlePeripheral : IDisposable
 
     private async Task NotifyAsync(byte[] bytes)
     {
+        if (_pcToIos is null) return;
         using var writer = new DataWriter();
         writer.WriteBytes(bytes);
         var buffer = writer.DetachBuffer();
-        foreach (var client in _pcToIos!.SubscribedClients)
-            await _pcToIos.NotifyValueAsync(buffer, client);
+        foreach (var client in _pcToIos.SubscribedClients)
+        {
+            try { await _pcToIos.NotifyValueAsync(buffer, client); }
+            catch { /* client vanished mid-send — never crash the app over one notify */ }
+        }
     }
 
     private async void OnPcToIosRead(GattLocalCharacteristic sender, GattReadRequestedEventArgs args)
     {
-        using var deferral = args.GetDeferral();
-        var request = await args.GetRequestAsync();
-        using var writer = new DataWriter();
-        writer.WriteBytes(_lastSent);
-        request.RespondWithValue(writer.DetachBuffer());
+        try
+        {
+            using var deferral = args.GetDeferral();
+            var request = await args.GetRequestAsync();
+            using var writer = new DataWriter();
+            // Only paired devices may read the last clipboard payload.
+            writer.WriteBytes(_authorized ? _lastSent : []);
+            request.RespondWithValue(writer.DetachBuffer());
+        }
+        catch { /* GATT callbacks are async void — an escape here kills the process */ }
     }
 
     private async void OnPcHttpRead(GattLocalCharacteristic sender, GattReadRequestedEventArgs args)
     {
-        using var deferral = args.GetDeferral();
-        var request = await args.GetRequestAsync();
-        using var writer = new DataWriter();
-        // Only reveal the HTTP endpoint to authorized (paired) devices.
-        writer.WriteBytes(_authorized ? _httpEndpointBytes : []);
-        request.RespondWithValue(writer.DetachBuffer());
+        try
+        {
+            using var deferral = args.GetDeferral();
+            var request = await args.GetRequestAsync();
+            using var writer = new DataWriter();
+            // Only reveal the HTTP endpoint to authorized (paired) devices.
+            writer.WriteBytes(_authorized ? _httpEndpointBytes : []);
+            request.RespondWithValue(writer.DetachBuffer());
+        }
+        catch { /* GATT callbacks are async void — an escape here kills the process */ }
     }
 
     private async void OnWriteRequested(GattLocalCharacteristic sender, GattWriteRequestedEventArgs args)
     {
-        using var deferral = args.GetDeferral();
-        var request = await args.GetRequestAsync();
-
-        using var reader = DataReader.FromBuffer(request.Value);
-        var bytes = new byte[request.Value.Length];
-        reader.ReadBytes(bytes);
-
-        if (request.Option == GattWriteOption.WriteWithResponse)
-            request.Respond();
-
-        var msg = System.Text.Encoding.UTF8.GetString(bytes);
-
-        if (msg.StartsWith(GattProtocol.PfxHello))
+        try
         {
-            // Format: HELLO:{deviceId}:{deviceName}
-            var payload = msg[GattProtocol.PfxHello.Length..];
-            var sep     = payload.IndexOf(':');
-            if (sep > 0)
+            using var deferral = args.GetDeferral();
+            var request = await args.GetRequestAsync();
+
+            using var reader = DataReader.FromBuffer(request.Value);
+            var bytes = new byte[request.Value.Length];
+            reader.ReadBytes(bytes);
+
+            if (request.Option == GattWriteOption.WriteWithResponse)
+                request.Respond();
+
+            var msg = System.Text.Encoding.UTF8.GetString(bytes);
+
+            if (msg.StartsWith(GattProtocol.PfxHello))
             {
-                var deviceId   = payload[..sep];
-                var deviceName = payload[(sep + 1)..];
-                if (_pairing.IsKnownDevice(deviceId))
+                // Format: HELLO:{deviceId}:{deviceName}
+                var payload = msg[GattProtocol.PfxHello.Length..];
+                var sep     = payload.IndexOf(':');
+                if (sep > 0)
                 {
-                    _authorized = true;
-                    _connectedDeviceName = deviceName;
-                    await NotifyAsync(System.Text.Encoding.UTF8.GetBytes(GattProtocol.MsgWelcome));
-                    ConnectionChanged?.Invoke(true, deviceName);
+                    var deviceId   = payload[..sep];
+                    var deviceName = payload[(sep + 1)..];
+                    if (_pairing.IsKnownDevice(deviceId))
+                    {
+                        _authorized = true;
+                        _connectedDeviceName = deviceName;
+                        await NotifyAsync(System.Text.Encoding.UTF8.GetBytes(GattProtocol.MsgWelcome));
+                        ConnectionChanged?.Invoke(true, deviceName);
+                    }
+                    else
+                    {
+                        _authorized = false;
+                        await NotifyAsync(System.Text.Encoding.UTF8.GetBytes(GattProtocol.MsgPairRequired));
+                    }
                 }
-                else
-                {
-                    _authorized = false;
-                    await NotifyAsync(System.Text.Encoding.UTF8.GetBytes(GattProtocol.MsgPairRequired));
-                }
+                return;
             }
-            return;
+
+            // Ignore all clipboard data from unpaired devices.
+            if (!_authorized) return;
+
+            if (msg.StartsWith(GattProtocol.PfxText))
+                TextReceived?.Invoke(msg[GattProtocol.PfxText.Length..]);
         }
-
-        // Ignore all clipboard data from unpaired devices.
-        if (!_authorized) return;
-
-        if (msg.StartsWith(GattProtocol.PfxText))
-            TextReceived?.Invoke(msg[GattProtocol.PfxText.Length..]);
+        catch { /* GATT callbacks are async void — an escape here kills the process */ }
     }
 
     private void OnSubscribedClientsChanged(GattLocalCharacteristic sender, object args)
@@ -210,6 +227,22 @@ internal sealed class BlePeripheral : IDisposable
             ConnectionChanged?.Invoke(false, _connectedDeviceName);
         }
         // ConnectionChanged(true) is deferred until the HELLO/WELCOME exchange completes.
+    }
+
+    // After PC sleep/resume the BLE stack often stops advertising silently —
+    // call this to bring the service back without restarting the app.
+    public void RestartAdvertising()
+    {
+        try
+        {
+            _serviceProvider?.StopAdvertising();
+            _serviceProvider?.StartAdvertising(new GattServiceProviderAdvertisingParameters
+            {
+                IsConnectable  = true,
+                IsDiscoverable = true,
+            });
+        }
+        catch { /* BT stack not ready yet right after resume — tray restart still works */ }
     }
 
     public void Dispose() => _serviceProvider?.StopAdvertising();

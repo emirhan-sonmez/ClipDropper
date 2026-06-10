@@ -16,7 +16,7 @@ internal sealed class HttpServer : IDisposable
     private volatile string   _pendingFileName = "file";
 
     public event Action<byte[], string>? FileReceived;
-    public string Endpoint { get; }
+    public string Endpoint { get; private set; }
 
     public HttpServer(PairingManager pairing)
     {
@@ -27,6 +27,15 @@ internal sealed class HttpServer : IDisposable
         var port = ((IPEndPoint)_listener.LocalEndpoint).Port;
         Endpoint = $"{GetLocalIp()}:{port}:{_token}";
         Task.Run(() => AcceptLoopAsync(_cts.Token));
+    }
+
+    // The listener is bound to IPAddress.Any, so port and token survive a network
+    // change — only the advertised IP needs recomputing (e.g. after sleep/resume).
+    public string RefreshEndpoint()
+    {
+        var port = ((IPEndPoint)_listener.LocalEndpoint).Port;
+        Endpoint = $"{GetLocalIp()}:{port}:{_token}";
+        return Endpoint;
     }
 
     public void SetImage(byte[] pngBytes) => _pendingImage = pngBytes;

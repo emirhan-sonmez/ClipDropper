@@ -125,6 +125,8 @@ internal sealed class MainForm : Form
 
         _ = Task.Run(() => RunPipeServerAsync(_pipeCts.Token));
 
+        Microsoft.Win32.SystemEvents.PowerModeChanged += OnPowerModeChanged;
+
         try
         {
             var ok = await _ble.StartAsync();
@@ -134,6 +136,21 @@ internal sealed class MainForm : Form
         {
             SetStatus($"BLE error: {ex.Message}");
         }
+    }
+
+    // After sleep/resume the advertised IP may be stale and BLE advertising often
+    // stops silently — refresh both once the stacks have had a moment to come back.
+    private void OnPowerModeChanged(object? sender, Microsoft.Win32.PowerModeChangedEventArgs e)
+    {
+        if (e.Mode != Microsoft.Win32.PowerModes.Resume) return;
+        _ = Task.Delay(3000).ContinueWith(_ =>
+        {
+            var ble  = _ble;
+            var http = _http;
+            if (ble is null || http is null) return;
+            ble.SetHttpEndpoint(http.RefreshEndpoint());
+            ble.RestartAdvertising();
+        });
     }
 
     // ── pipe server (B1) ──────────────────────────────────────────────────
@@ -375,6 +392,7 @@ internal sealed class MainForm : Form
 
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
+        Microsoft.Win32.SystemEvents.PowerModeChanged -= OnPowerModeChanged;
         _pipeCts.Cancel();
         _pipeCts.Dispose();
         _qrForm?.Close();

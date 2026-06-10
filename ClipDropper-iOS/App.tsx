@@ -315,7 +315,7 @@ export default function App() {
     try {
       setStatus('connecting');
       setMsg(`Connecting to ${device.name ?? 'ClipDropper PC'}…`);
-      const conn = await device.connect();
+      const conn = await device.connect({ timeout: 10000 });
       await conn.discoverAllServicesAndCharacteristics();
       deviceRef.current          = conn;
       handshakeCompleted.current = false;
@@ -400,19 +400,36 @@ export default function App() {
         SERVICE_UUID, IOS_TO_PC_UUID,
         utf8ToBase64(`HELLO:${deviceUUIDRef.current}:${MY_DEVICE_NAME}`));
 
-      // 5s fallback: old PC builds don't speak the pairing protocol — connect directly
+      // The first HELLO can race the notification subscription on the PC side,
+      // losing the WELCOME/PAIR_REQUIRED reply — retry once
+      setTimeout(() => {
+        if (handshakeCompleted.current || gotPairRequired.current || !deviceRef.current) return;
+        conn.writeCharacteristicWithResponseForService(
+          SERVICE_UUID, IOS_TO_PC_UUID,
+          utf8ToBase64(`HELLO:${deviceUUIDRef.current}:${MY_DEVICE_NAME}`)).catch(() => {});
+      }, 2500);
+
+      // 5s fallback: still no reply — read the HTTP characteristic to tell apart
+      // old PC builds (valid endpoint, no pairing protocol) from unpaired state (empty)
       setTimeout(async () => {
         if (handshakeCompleted.current || gotPairRequired.current || !deviceRef.current) return;
+        let endpoint = '';
         try {
           const hc = await conn.readCharacteristicForService(SERVICE_UUID, PC_HTTP_UUID);
-          if (hc.value) {
-            const p = base64ToUtf8(hc.value).split(':');
-            httpRef.current = { ip: p[0], port: p[1], token: p[2] };
-          }
+          if (hc.value) endpoint = base64ToUtf8(hc.value);
         } catch {}
-        setupRssiPolling(conn);
-        setStatus('connected');
-        setMsg(`Connected to ${device.name ?? 'ClipDropper PC'}${httpRef.current ? ' · HTTP ready' : ' · No HTTP (restart PC app)'}`);
+        const p = endpoint.split(':');
+        if (p.length === 3) {
+          httpRef.current = { ip: p[0], port: p[1], token: p[2] };
+          setupRssiPolling(conn);
+          setStatus('connected');
+          setMsg(`Connected to ${device.name ?? 'ClipDropper PC'} · HTTP ready`);
+        } else {
+          // PC refused the HTTP endpoint — we're not paired; the PAIR_REQUIRED reply was lost
+          gotPairRequired.current = true;
+          setPairRequired(true);
+          setMsg('Pairing required — click "Pair New Device" on your PC tray, then tap Scan QR here');
+        }
       }, 5000);
 
     } catch (e) { handleError(e as BleError); }
@@ -448,6 +465,10 @@ export default function App() {
           await deviceRef.current.writeCharacteristicWithResponseForService(
             SERVICE_UUID, IOS_TO_PC_UUID,
             utf8ToBase64(`HELLO:${deviceUUIDRef.current}:${MY_DEVICE_NAME}`));
+        } else {
+          // Paired before connecting over BLE — start the connection now
+          setMsg('Paired! Connecting…');
+          scan();
         }
       } else {
         const body = await res.text().catch(() => '');
@@ -566,6 +587,11 @@ export default function App() {
     if (code === BleErrorCode.OperationCancelled || code === BleErrorCode.BluetoothManagerDestroyed) {
       setStatus('idle');
       setMsg('Disconnected. Tap Connect to reconnect.');
+      return;
+    }
+    if (code === BleErrorCode.OperationTimedOut) {
+      setStatus('idle');
+      setMsg('Connection timed out. Tap Connect to retry.');
       return;
     }
     setStatus('error');
