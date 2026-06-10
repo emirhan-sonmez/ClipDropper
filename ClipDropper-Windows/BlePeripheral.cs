@@ -109,6 +109,15 @@ internal sealed class BlePeripheral : IDisposable
         await NotifyAsync(bytes);
     }
 
+    public async Task NotifyLongTextAvailableAsync()
+    {
+        if (!_authorized) return;
+        var bytes = System.Text.Encoding.UTF8.GetBytes(GattProtocol.PfxTextLong);
+        _lastSent = bytes;
+        if (_pcToIos is null || _pcToIos.SubscribedClients.Count == 0) return;
+        await NotifyAsync(bytes);
+    }
+
     public async Task NotifyImageAvailableAsync()
     {
         if (!_authorized) return;

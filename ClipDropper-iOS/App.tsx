@@ -29,6 +29,7 @@ const PC_TO_IOS_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
 const IOS_TO_PC_UUID = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
 const PC_HTTP_UUID   = 'f3641f28-cb91-4353-9a5b-2f3459b33f8a';
 const MAX_FILE_MB    = 50;
+const MAX_BLE_BYTES  = 180; // must match GattProtocol.MaxBleBytes on Windows
 const HIST_MAX       = 5;
 const DEVICE_ID_FILE = '.deviceId';
 
@@ -230,7 +231,7 @@ export default function App() {
         const char = await deviceRef.current.readCharacteristicForService(SERVICE_UUID, PC_TO_IOS_UUID);
         if (char.value) {
           const msg = base64ToUtf8(char.value);
-          if (msg && msg !== lastPcMsg.current && (msg.startsWith('T:') || msg === 'I:'))
+          if (msg && msg !== lastPcMsg.current && (msg.startsWith('T:') || msg === 'I:' || msg === 'TL:'))
             applyPcMsg(msg).catch(() => {});
         }
       } catch { /* device may not be ready yet */ }
@@ -245,6 +246,20 @@ export default function App() {
       Clipboard.setString(text);
       setLastItem({ kind: 'text', content: text.length > 40 ? text.slice(0, 40) + '…' : text });
       pushItem({ kind: 'text', label, value: text });
+      lastPcMsg.current = msg;
+      return;
+    }
+    if (msg === 'TL:') {
+      // Text too long for one BLE packet — PC parked it on its HTTP server
+      if (!httpRef.current) throw new Error('HTTP not available. Restart PC app and reconnect.');
+      const { ip, port, token } = httpRef.current;
+      const res = await fetch(`http://${ip}:${port}/clip/text?token=${token}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status} from ${ip}:${port} — check same WiFi & Firewall.`);
+      const text    = await res.text();
+      const preview = text.length > 40 ? text.slice(0, 40) + '…' : text;
+      Clipboard.setString(text);
+      setLastItem({ kind: 'text', content: preview });
+      pushItem({ kind: 'text', label: `↓ "${preview}"`, value: text });
       lastPcMsg.current = msg;
       return;
     }
@@ -367,6 +382,12 @@ export default function App() {
 
         if (msg.startsWith('T:')) { applyPcMsg(msg).catch(() => {}); return; }
 
+        if (msg === 'TL:') {
+          if (!httpRef.current) { Alert.alert('PC text', 'HTTP not available. Restart PC app, reconnect, try again.'); return; }
+          applyPcMsg(msg).catch(e => Alert.alert('Text failed', String(e)));
+          return;
+        }
+
         if (msg === 'I:') {
           if (!httpRef.current) { Alert.alert('PC image', 'HTTP not available. Restart PC app, reconnect, try again.'); return; }
           applyPcMsg(msg).catch(e => Alert.alert('Image failed', String(e)));
@@ -379,7 +400,8 @@ export default function App() {
           const { ip, port, token } = httpRef.current;
           const dest           = (FileSystem.cacheDirectory ?? '') + fn;
           try {
-            const dl = await FileSystem.downloadAsync(`http://${ip}:${port}/clip/file?token=${token}`, dest);
+            const dl = await FileSystem.downloadAsync(
+              `http://${ip}:${port}/clip/file?token=${token}&name=${encodeURIComponent(fn)}`, dest);
             if (dl.status !== 200) { Alert.alert('File from PC', `HTTP ${dl.status}`); return; }
             setLastItem({ kind: 'file', name: fn });
             pushItem({ kind: 'file', label: `↓ ${fn}`, localPath: dest });
@@ -491,18 +513,30 @@ export default function App() {
         if (!httpRef.current) { Alert.alert('Not available', 'HTTP not ready. Restart PC app, reconnect, try again.'); return; }
         const raw = await Clipboard.getImage();
         if (!raw) { Alert.alert('No image', 'Could not read clipboard image.'); return; }
-        const b64   = raw.includes(',') ? raw.split(',')[1] : raw;
-        const bin   = atob(b64);
-        const bytes = new Uint8Array(bin.length);
-        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-        if (await uploadBytes(bytes, 'clipboard_image.png'))
+        const b64 = raw.includes(',') ? raw.split(',')[1] : raw;
+        const tmp = (FileSystem.cacheDirectory ?? '') + `clip_upload_${Date.now()}.png`;
+        await FileSystem.writeAsStringAsync(tmp, b64, { encoding: FileSystem.EncodingType.Base64 });
+        if (await uploadFile(tmp, 'clipboard_image.png'))
           pushItem({ kind: 'file', label: '↑ clipboard image' });
+        FileSystem.deleteAsync(tmp, { idempotent: true }).catch(() => {});
         return;
       }
       const text = await Clipboard.getString();
       if (!text) { Alert.alert('Empty clipboard', 'Nothing to send.'); return; }
-      await deviceRef.current.writeCharacteristicWithResponseForService(
-        SERVICE_UUID, IOS_TO_PC_UUID, utf8ToBase64('T:' + text));
+      if (new TextEncoder().encode('T:' + text).length > MAX_BLE_BYTES) {
+        // Too big for one BLE packet — POST to the PC's HTTP server instead
+        if (!httpRef.current) { Alert.alert('Text too long', 'HTTP not ready for long text. Restart PC app, reconnect, try again.'); return; }
+        const { ip, port, token } = httpRef.current;
+        const res = await fetch(`http://${ip}:${port}/clip/text?token=${token}`, {
+          method:  'POST',
+          headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+          body:    text,
+        });
+        if (!res.ok) { Alert.alert('Send failed', `Server returned ${res.status}`); return; }
+      } else {
+        await deviceRef.current.writeCharacteristicWithResponseForService(
+          SERVICE_UUID, IOS_TO_PC_UUID, utf8ToBase64('T:' + text));
+      }
       const preview = text.length > 40 ? text.slice(0, 40) + '…' : text;
       pushItem({ kind: 'text', label: `↑ "${preview}"`, value: text });
     } catch (e) { handleError(e as BleError); }
@@ -522,23 +556,25 @@ export default function App() {
         if (!go) continue;
       }
       try {
-        const b64   = await FileSystem.readAsStringAsync(file.uri, { encoding: FileSystem.EncodingType.Base64 });
-        const bin   = atob(b64);
-        const bytes = new Uint8Array(bin.length);
-        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-        if (await uploadBytes(bytes, file.name)) { pushItem({ kind: 'file', label: `↑ ${file.name}` }); sent++; }
+        if (await uploadFile(file.uri, file.name)) { pushItem({ kind: 'file', label: `↑ ${file.name}` }); sent++; }
       } catch (e) { Alert.alert('Upload failed', `${file.name}: ${String(e)}`); }
     }
     if (sent > 1) Alert.alert('Done', `${sent} files sent to PC.`);
   }
 
-  async function uploadBytes(bytes: Uint8Array, filename: string): Promise<boolean> {
+  // Streams the file straight from disk — no base64/byte-array round-trip
+  // through JS memory, so large files upload fast without memory spikes
+  async function uploadFile(uri: string, filename: string): Promise<boolean> {
     const http = httpRef.current;
     if (!http) { Alert.alert('Not connected', 'Connect to your PC first.'); return false; }
     const url = `http://${http.ip}:${http.port}/clip/upload?token=${http.token}&name=${encodeURIComponent(filename)}`;
     try {
-      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: bytes.buffer });
-      if (res.ok) {
+      const res = await FileSystem.uploadAsync(url, uri, {
+        httpMethod: 'POST',
+        uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+        headers:    { 'Content-Type': 'application/octet-stream' },
+      });
+      if (res.status === 200) {
         setLastItem({ kind: 'file', name: filename });
         Alert.alert('Sent!', `${filename} saved to your PC's Downloads folder.`);
         return true;
@@ -573,12 +609,8 @@ export default function App() {
     if (result.canceled || !result.assets?.length) return;
     const asset = result.assets[0];
     try {
-      const b64   = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.Base64 });
-      const bin   = atob(b64);
-      const bytes = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
       const name = asset.fileName ?? 'photo.jpg';
-      if (await uploadBytes(bytes, name)) pushItem({ kind: 'file', label: `↑ ${name}` });
+      if (await uploadFile(asset.uri, name)) pushItem({ kind: 'file', label: `↑ ${name}` });
     } catch (e) { Alert.alert('Failed', String(e)); }
   }
 

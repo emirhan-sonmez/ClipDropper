@@ -13,6 +13,8 @@ internal static class GattProtocol
     public const string PfxText  = "T:";
     public const string PfxImage = "I:";
     public const string PfxFile  = "F:";
+    // Text too large for one BLE packet — iOS fetches it from /clip/text instead
+    public const string PfxTextLong = "TL:";
 
     // Pairing handshake (iOS → Windows: PfxHello; Windows → iOS: MsgWelcome / MsgPairRequired)
     public const string PfxHello        = "HELLO:";        // followed by {deviceId}:{deviceName}

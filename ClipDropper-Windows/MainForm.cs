@@ -113,6 +113,7 @@ internal sealed class MainForm : Form
 
         _http = new HttpServer(_pairing);
         _http.FileReceived += OnFileReceived;
+        _http.TextReceived += OnRemoteText;
 
         _clipboardMonitor = new ClipboardMonitor();
         _clipboardMonitor.TextCopied  += OnLocalText;
@@ -233,7 +234,17 @@ internal sealed class MainForm : Form
     private void OnLocalText(string text)
     {
         if (_suppressNext) { _suppressNext = false; return; }
-        _ = _ble?.SendTextAsync(text);
+        if (System.Text.Encoding.UTF8.GetByteCount(text) + GattProtocol.PfxText.Length > GattProtocol.MaxBleBytes)
+        {
+            // Too big for one BLE packet — park it on the HTTP server and tell
+            // iOS to fetch it, instead of truncating
+            _http?.SetText(text);
+            _ = _ble?.NotifyLongTextAvailableAsync();
+        }
+        else
+        {
+            _ = _ble?.SendTextAsync(text);
+        }
     }
 
     private void OnLocalImage(Bitmap bmp)

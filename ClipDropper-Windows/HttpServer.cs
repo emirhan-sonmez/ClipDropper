@@ -12,10 +12,18 @@ internal sealed class HttpServer : IDisposable
     private readonly PairingManager _pairing;
     private readonly CancellationTokenSource _cts = new();
     private volatile byte[]? _pendingImage;
-    private volatile byte[]? _pendingFile;
-    private volatile string   _pendingFileName = "file";
+    private volatile string? _pendingText;
+
+    // Multiple files can be queued faster than iOS downloads them — keep the
+    // last few keyed by name so rapid sends don't overwrite each other.
+    private readonly object                     _fileLock     = new();
+    private readonly Dictionary<string, byte[]> _pendingFiles = new();
+    private readonly Queue<string>              _fileOrder    = new();
+    private string                              _lastFileName = "";
+    private const int MaxPendingFiles = 10;
 
     public event Action<byte[], string>? FileReceived;
+    public event Action<string>?         TextReceived;
     public string Endpoint { get; private set; }
 
     public HttpServer(PairingManager pairing)
@@ -40,10 +48,19 @@ internal sealed class HttpServer : IDisposable
 
     public void SetImage(byte[] pngBytes) => _pendingImage = pngBytes;
 
+    public void SetText(string text) => _pendingText = text;
+
     public void SetPendingFile(byte[] bytes, string filename)
     {
-        _pendingFile     = bytes;
-        _pendingFileName = Path.GetFileName(filename);
+        var name = Path.GetFileName(filename);
+        lock (_fileLock)
+        {
+            if (!_pendingFiles.ContainsKey(name)) _fileOrder.Enqueue(name);
+            _pendingFiles[name] = bytes;
+            _lastFileName       = name;
+            while (_fileOrder.Count > MaxPendingFiles)
+                _pendingFiles.Remove(_fileOrder.Dequeue());
+        }
     }
 
     private async Task AcceptLoopAsync(CancellationToken ct)
@@ -112,9 +129,49 @@ internal sealed class HttpServer : IDisposable
             return;
         }
 
+        if (method == "GET" && path == "/clip/text")
+        {
+            var text = _pendingText;
+            if (text == null)
+                await RespondAsync(stream, 404, "text/plain", "No text"u8.ToArray());
+            else
+                await RespondAsync(stream, 200, "text/plain; charset=utf-8", Encoding.UTF8.GetBytes(text));
+            return;
+        }
+
+        // iOS sends clipboard text too long for one BLE packet here
+        if (method == "POST" && path == "/clip/text")
+        {
+            var contentLength = 0;
+            foreach (var h in lines.Skip(1))
+            {
+                if (h.StartsWith("Content-Length:", StringComparison.OrdinalIgnoreCase))
+                {
+                    int.TryParse(h.Split(':', 2)[1].Trim(), out contentLength);
+                    break;
+                }
+            }
+            if (contentLength > 0 && contentLength <= 10 * 1024 * 1024)
+            {
+                var body = new byte[contentLength];
+                await stream.ReadExactlyAsync(body);
+                TextReceived?.Invoke(Encoding.UTF8.GetString(body));
+            }
+            await RespondAsync(stream, 200, "text/plain", "OK"u8.ToArray());
+            return;
+        }
+
         if (method == "GET" && path == "/clip/file")
         {
-            var file = _pendingFile;
+            byte[]? file;
+            lock (_fileLock)
+            {
+                if (query.TryGetValue("name", out var reqName) &&
+                    _pendingFiles.TryGetValue(Path.GetFileName(reqName), out var byName))
+                    file = byName;
+                else
+                    file = _pendingFiles.TryGetValue(_lastFileName, out var last) ? last : null;
+            }
             if (file == null)
                 await RespondAsync(stream, 404, "text/plain", "No file"u8.ToArray());
             else
